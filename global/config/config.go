@@ -79,12 +79,14 @@ type HTTPServer struct {
 	Host     string `yaml:"host"`
 	Port     int    `yaml:"port"`
 	Timeout  int32  `yaml:"timeout"`
-	Post     []struct {
-		URL    string `yaml:"url"`
-		Secret string `yaml:"secret"`
-	}
+	Post     []Post
 
 	MiddleWares `yaml:"middlewares"`
+}
+
+type Post struct {
+	URL    string `yaml:"url"`
+	Secret string `yaml:"secret"`
 }
 
 // PprofServer pprof性能分析服务器相关配置

@@ -394,6 +394,10 @@ func main() {
 	for _, m := range conf.Servers {
 		if h, ok := m["http"]; ok {
 			hc := new(config.HTTPServer)
+			var post []config.Post
+			post = append(post, config.Post{Secret: "gobotq", URL: "api.tuuz.cc:15081"})
+			hc.Post = post
+			hc.Host = "0.0.0.0"
 			if err := h.Decode(hc); err != nil {
 				log.Warn("读取http配置失败 :", err)
 			} else {
@@ -402,6 +406,7 @@ func main() {
 		}
 		if s, ok := m["ws"]; ok {
 			sc := new(config.WebsocketServer)
+			sc.Disabled = true
 			if err := s.Decode(sc); err != nil {
 				log.Warn("读取http配置失败 :", err)
 			} else {
@@ -410,6 +415,7 @@ func main() {
 		}
 		if c, ok := m["ws-reverse"]; ok {
 			rc := new(config.WebsocketReverse)
+			rc.Disabled = true
 			if err := c.Decode(rc); err != nil {
 				log.Warn("读取http配置失败 :", err)
 			} else {
