@@ -408,19 +408,19 @@ func main() {
 		}
 		if s, ok := m["ws"]; ok {
 			sc := new(config.WebsocketServer)
-			sc.Disabled = true
 			if err := s.Decode(sc); err != nil {
 				log.Warn("读取http配置失败 :", err)
 			} else {
+				sc.Disabled = true
 				go server.RunWebSocketServer(bot, sc)
 			}
 		}
 		if c, ok := m["ws-reverse"]; ok {
 			rc := new(config.WebsocketReverse)
-			rc.Disabled = true
 			if err := c.Decode(rc); err != nil {
 				log.Warn("读取http配置失败 :", err)
 			} else {
+				rc.Disabled = true
 				go server.RunWebSocketClient(bot, rc)
 			}
 		}
