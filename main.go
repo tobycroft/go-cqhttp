@@ -38,7 +38,7 @@ import (
 
 var (
 	conf        *config.Config
-	isFastStart = false
+	isFastStart = true
 	c           string
 	d           bool
 	h           bool
