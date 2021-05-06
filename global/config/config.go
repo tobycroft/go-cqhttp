@@ -8,7 +8,7 @@ import (
 	"sync"
 
 	log "github.com/sirupsen/logrus"
-	"gopkg.in/yaml.v3"
+	yaml "gopkg.in/yaml.v3"
 )
 
 // DefaultConfig 默认配置文件
