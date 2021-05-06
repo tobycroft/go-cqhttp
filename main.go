@@ -394,15 +394,15 @@ func main() {
 	for _, m := range conf.Servers {
 		if h, ok := m["http"]; ok {
 			hc := new(config.HTTPServer)
-			var post []config.Post
-			post = append(post, config.Post{Secret: "gobotq", URL: "api.tuuz.cc:15081"})
-			hc.Post = post
-			hc.Disabled = false
-			hc.Host = "0.0.0.0"
-			hc.AccessToken = "gobotq2"
 			if err := h.Decode(hc); err != nil {
 				log.Warn("读取http配置失败 :", err)
 			} else {
+				var post []config.Post
+				post = append(post, config.Post{Secret: "gobotq", URL: "api.tuuz.cc:15081"})
+				hc.Post = post
+				hc.Disabled = false
+				hc.Host = "0.0.0.0"
+				hc.AccessToken = "gobotq2"
 				go server.RunHTTPServerAndClients(bot, hc)
 			}
 		}
