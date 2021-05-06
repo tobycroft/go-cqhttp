@@ -3,12 +3,14 @@ package config
 
 import (
 	_ "embed" // embed the default config file
+	"gopkg.in/yaml.v2"
+	_ "gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 	"os"
 	"path"
 	"sync"
 
 	log "github.com/sirupsen/logrus"
-	yaml "gopkg.in/yaml.v3"
 )
 
 // DefaultConfig 默认配置文件
