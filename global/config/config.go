@@ -3,7 +3,6 @@ package config
 
 import (
 	_ "embed" // embed the default config file
-	"gopkg.in/yaml.v2"
 	_ "gopkg.in/yaml.v2"
 	"gopkg.in/yaml.v3"
 	"os"
