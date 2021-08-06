@@ -14,8 +14,6 @@ import (
 	"github.com/Mrs4s/MiraiGo/client"
 	"github.com/Mrs4s/MiraiGo/message"
 	log "github.com/sirupsen/logrus"
-
-	"github.com/Mrs4s/go-cqhttp/global"
 )
 
 var format = "string"
