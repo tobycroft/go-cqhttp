@@ -1,11 +1,11 @@
+//go:build (linux || (windows && !arm) || darwin) && (386 || amd64 || arm || arm64) && !race
 // +build linux windows,!arm darwin
 // +build 386 amd64 arm arm64
+// +build !race
 
-// Package codec Slik编码核心模块
 package codec
 
 import (
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"path"
@@ -14,15 +14,13 @@ import (
 	"github.com/wdvxdr1123/go-silk"
 )
 
-const (
-	silkCachePath = "data/cache"
-)
+const silkCachePath = "data/cache"
 
 // EncodeToSilk 将音频编码为Silk
 func EncodeToSilk(record []byte, tempName string, useCache bool) (silkWav []byte, err error) {
 	// 1. 写入缓存文件
 	rawPath := path.Join(silkCachePath, tempName+".wav")
-	err = ioutil.WriteFile(rawPath, record, os.ModePerm)
+	err = os.WriteFile(rawPath, record, os.ModePerm)
 	if err != nil {
 		return nil, errors.Wrap(err, "write temp file error")
 	}
@@ -37,7 +35,7 @@ func EncodeToSilk(record []byte, tempName string, useCache bool) (silkWav []byte
 	defer os.Remove(pcmPath)
 
 	// 3. 转silk
-	pcm, err := ioutil.ReadFile(pcmPath)
+	pcm, err := os.ReadFile(pcmPath)
 	if err != nil {
 		return nil, errors.Wrap(err, "read pcm file err")
 	}
@@ -47,7 +45,7 @@ func EncodeToSilk(record []byte, tempName string, useCache bool) (silkWav []byte
 	}
 	if useCache {
 		silkPath := path.Join(silkCachePath, tempName+".silk")
-		err = ioutil.WriteFile(silkPath, silkWav, 0666)
+		err = os.WriteFile(silkPath, silkWav, 0o666)
 	}
 	return
 }

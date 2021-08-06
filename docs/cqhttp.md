@@ -351,7 +351,7 @@ Type: `video`
 | `file`  | string  | 支持http和file发送                                                     |
 | `cover` | string  | 视频封面，支持http，file和base64发送，格式必须为jpg                    |
 | `c`     | `2` `3` | 通过网络下载视频时的线程数, 默认单线程. (在资源不支持并发时会自动处理) |
-示例: `[CQ:image,file=file:///C:\\Users\Richard\Pictures\1.mp4]`
+示例: `[CQ:video,file=file:///C:\\Users\Richard\Videos\1.mp4]`
 
 ### XML 消息
 
@@ -1049,6 +1049,32 @@ JSON数组:
 | `content`  | string   |        | 公告内容 |
 
 `该 API 没有响应数据`
+
+### 删除好友
+
+终结点: `/delete_friend`
+
+**参数**
+
+| 字段名     | 数据类型 | 默认值 | 说明     |
+| ---------- | -------- | ------ | -------- |
+| `id`       | int64    |        | 好友ID   |
+
+`该 API 没有响应数据`
+
+### 获取企点账号信息
+
+> 该API只有企点协议可用
+
+终结点: `/qidian_get_account_info`
+
+**响应数据**
+
+| 字段               | 类型    | 说明         |
+| ------------------ | ------- | ------------ |
+| `master_id`        | int64   | 父账号ID      |
+| `ext_name`         | string  | 用户昵称     |
+| `create_time`      | int64   | 账号创建时间  |
 
 ### 重载事件过滤器
 
