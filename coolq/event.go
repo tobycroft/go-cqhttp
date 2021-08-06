@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Mrs4s/go-cqhttp/global"
+
 	"github.com/Mrs4s/MiraiGo/binary"
 	"github.com/Mrs4s/MiraiGo/client"
 	"github.com/Mrs4s/MiraiGo/message"
@@ -50,6 +52,7 @@ func (bot *CQBot) privateMessageEvent(c *client.QQClient, m *message.PrivateMess
 		"sub_type":     "friend",
 		"message_id":   id,
 		"user_id":      m.Sender.Uin,
+		"target_id":    m.Target,
 		"message":      ToFormattedMessage(m.Elements, m.Sender.Uin, false),
 		"raw_message":  cqm,
 		"font":         0,
@@ -102,11 +105,11 @@ func (bot *CQBot) groupMessageEvent(c *client.QQClient, m *message.GroupMessage)
 	bot.dispatchEventMessage(gm)
 }
 
-func (bot *CQBot) tempMessageEvent(c *client.QQClient, m1 *client.TempMessageEvent) {
-	m := m1.Message
+func (bot *CQBot) tempMessageEvent(c *client.QQClient, e *client.TempMessageEvent) {
+	m := e.Message
 	bot.checkMedia(m.Elements)
 	cqm := ToStringMessage(m.Elements, m.Sender.Uin, true)
-	bot.tempMsgCache.Store(m.Sender.Uin, m.GroupCode)
+	bot.tempSessionCache.Store(m.Sender.Uin, e.Session)
 	id := m.Id
 	if bot.db != nil {
 		id = bot.InsertTempMessage(m.Sender.Uin, m)
@@ -116,6 +119,7 @@ func (bot *CQBot) tempMessageEvent(c *client.QQClient, m1 *client.TempMessageEve
 		"post_type":    "message",
 		"message_type": "private",
 		"sub_type":     "group",
+		"temp_source":  e.Session.Source,
 		"message_id":   id,
 		"user_id":      m.Sender.Uin,
 		"message":      ToFormattedMessage(m.Elements, m.Sender.Uin, false),
@@ -240,6 +244,10 @@ func (bot *CQBot) groupNotifyEvent(c *client.QQClient, e client.INotifyEvent) {
 					return "performer"
 				case client.Emotion:
 					return "emotion"
+				case client.Legend:
+					return "legend"
+				case client.StrongNewbie:
+					return "strong_newbie"
 				default:
 					return "ERROR"
 				}
@@ -250,8 +258,7 @@ func (bot *CQBot) groupNotifyEvent(c *client.QQClient, e client.INotifyEvent) {
 
 func (bot *CQBot) friendNotifyEvent(c *client.QQClient, e client.INotifyEvent) {
 	friend := c.FindFriend(e.From())
-	switch notify := e.(type) {
-	case *client.FriendPokeNotifyEvent:
+	if notify, ok := e.(*client.FriendPokeNotifyEvent); ok {
 		log.Infof("好友 %v 戳了戳你.", friend.Nickname)
 		bot.dispatchEventMessage(MSG{
 			"post_type":   "notice",
@@ -381,7 +388,7 @@ func (bot *CQBot) friendRequestEvent(c *client.QQClient, e *client.NewFriendRequ
 
 func (bot *CQBot) friendAddedEvent(c *client.QQClient, e *client.NewFriendEvent) {
 	log.Infof("添加了新好友: %v(%v)", e.Friend.Nickname, e.Friend.Uin)
-	bot.tempMsgCache.Delete(e.Friend.Uin)
+	bot.tempSessionCache.Delete(e.Friend.Uin)
 	bot.dispatchEventMessage(MSG{
 		"post_type":   "notice",
 		"notice_type": "friend_add",

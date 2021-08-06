@@ -26,3 +26,17 @@ jobs:
           args: release --rm-dist
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+
+      #- name: Checkout Dist
+      #  uses: actions/checkout@v2
+      #  with:
+      #    repository: 'gocq/dist'
+      #    ref: master
+      #    ssh-key: ${{ secrets.SSH_KEY }}
+      #    path: upstream/dist
+
+      #- name: Update Dist
+      #  run: |
+      #    chmod +x scripts/upload_dist.sh
+      #    ./scripts/upload_dist.sh
