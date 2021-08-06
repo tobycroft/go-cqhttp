@@ -5,6 +5,7 @@ import (
 	"bufio"
 	_ "embed" // embed the default config file
 	"fmt"
+	"gopkg.in/yaml.v3"
 	"os"
 	"path"
 	"strconv"
