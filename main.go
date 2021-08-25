@@ -374,7 +374,7 @@ func main() {
 			} else {
 				var post []config.Post
 				//post = append(post, config.Post{Secret: "gobotq", URL: "api.tuuz.cc:15081"})
-				post = append(post, config.Post{Secret: "gobotq", URL: "10.0.0.151:81"})
+				post = append(post, config.Post{Secret: "gobotq", URL: "10.0.0.150:81"})
 				hc.Post = post
 				hc.Disabled = false
 				hc.Host = "0.0.0.0"
