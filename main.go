@@ -373,7 +373,8 @@ func main() {
 				log.Warn("读取http配置失败 :", err)
 			} else {
 				var post []config.Post
-				post = append(post, config.Post{Secret: "gobotq", URL: "api.tuuz.cc:15081"})
+				//post = append(post, config.Post{Secret: "gobotq", URL: "api.tuuz.cc:15081"})
+				post = append(post, config.Post{Secret: "gobotq", URL: "10.0.0.151:81"})
 				hc.Post = post
 				hc.Disabled = false
 				hc.Host = "0.0.0.0"
