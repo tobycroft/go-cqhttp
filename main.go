@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"flag"
 	"fmt"
+	config2 "github.com/Mrs4s/go-cqhttp/config"
 	"os"
 	"os/exec"
 	"path"
@@ -381,8 +382,7 @@ func main() {
 				log.Warn("读取http配置失败 :", err)
 			} else {
 				var post []config.Post
-				//post = append(post, config.Post{Secret: "gobotq", URL: "api.tuuz.cc:15081"})
-				post = append(post, config.Post{Secret: "gobotq", URL: "10.0.0.150:81"})
+				post = append(post, config.Post{Secret: config2.Secret, URL: config2.Remote_address})
 				hc.Post = post
 				hc.Disabled = false
 				hc.Host = "0.0.0.0"
