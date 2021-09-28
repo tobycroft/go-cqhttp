@@ -3,7 +3,6 @@ package coolq
 import (
 	"bytes"
 	"crypto/md5"
-	"encoding/base64"
 	"encoding/hex"
 	xml2 "encoding/xml"
 	"errors"
@@ -18,11 +17,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gabriel-vasile/mimetype"
-
 	"github.com/Mrs4s/MiraiGo/binary"
 	"github.com/Mrs4s/MiraiGo/message"
 	"github.com/Mrs4s/MiraiGo/utils"
+	"github.com/gabriel-vasile/mimetype"
 	log "github.com/sirupsen/logrus"
 	"github.com/tidwall/gjson"
 
@@ -81,7 +79,6 @@ type LocalVoiceElement struct {
 
 // LocalVideoElement 本地视频
 type LocalVideoElement struct {
-	message.ShortVideoElement
 	File  string
 	thumb io.ReadSeeker
 }
@@ -95,6 +92,11 @@ func (e *LocalImageElement) Type() message.ElementType {
 func (e *GiftElement) Type() message.ElementType {
 	// Make message.IMessageElement Happy
 	return message.At
+}
+
+// Type impl message.IMessageElement
+func (e *LocalVideoElement) Type() message.ElementType {
+	return message.Video
 }
 
 // GiftID 礼物ID数组
@@ -122,8 +124,8 @@ func (e *PokeElement) Type() message.ElementType {
 }
 
 // ToArrayMessage 将消息元素数组转为MSG数组以用于消息上报
-func ToArrayMessage(e []message.IMessageElement, groupID int64) (r []MSG) {
-	r = make([]MSG, 0, len(e))
+func ToArrayMessage(e []message.IMessageElement, groupID int64) (r []global.MSG) {
+	r = make([]global.MSG, 0, len(e))
 	m := &message.SendingMessage{Elements: e}
 	reply := m.FirstOrNil(func(e message.IMessageElement) bool {
 		_, ok := e.(*message.ReplyElement)
@@ -136,7 +138,7 @@ func ToArrayMessage(e []message.IMessageElement, groupID int64) (r []MSG) {
 			rid = replyElem.Sender
 		}
 		if ExtraReplyData {
-			r = append(r, MSG{
+			r = append(r, global.MSG{
 				"type": "reply",
 				"data": map[string]string{
 					"id":   strconv.FormatInt(int64(toGlobalID(rid, replyElem.ReplySeq)), 10),
@@ -147,71 +149,71 @@ func ToArrayMessage(e []message.IMessageElement, groupID int64) (r []MSG) {
 				},
 			})
 		} else {
-			r = append(r, MSG{
+			r = append(r, global.MSG{
 				"type": "reply",
 				"data": map[string]string{"id": strconv.FormatInt(int64(toGlobalID(rid, replyElem.ReplySeq)), 10)},
 			})
 		}
 	}
 	for i, elem := range e {
-		var m MSG
+		var m global.MSG
 		switch o := elem.(type) {
 		case *message.ReplyElement:
-			if RemoveReplyAt && i+1 < len(e) && e[i+1].Type() == message.At {
+			if RemoveReplyAt && i+1 < len(e) {
 				elem, ok := e[i+1].(*message.AtElement)
 				if ok && elem.Target == o.Sender {
 					e[i+1] = nil
 				}
 			}
 		case *message.TextElement:
-			m = MSG{
+			m = global.MSG{
 				"type": "text",
 				"data": map[string]string{"text": o.Content},
 			}
 		case *message.LightAppElement:
-			m = MSG{
+			m = global.MSG{
 				"type": "json",
 				"data": map[string]string{"data": o.Content},
 			}
 		case *message.AtElement:
 			if o.Target == 0 {
-				m = MSG{
+				m = global.MSG{
 					"type": "at",
 					"data": map[string]string{"qq": "all"},
 				}
 			} else {
-				m = MSG{
+				m = global.MSG{
 					"type": "at",
 					"data": map[string]string{"qq": strconv.FormatInt(o.Target, 10)},
 				}
 			}
 		case *message.RedBagElement:
-			m = MSG{
+			m = global.MSG{
 				"type": "redbag",
 				"data": map[string]string{"title": o.Title},
 			}
 		case *message.ForwardElement:
-			m = MSG{
+			m = global.MSG{
 				"type": "forward",
 				"data": map[string]string{"id": o.ResId},
 			}
 		case *message.FaceElement:
-			m = MSG{
+			m = global.MSG{
 				"type": "face",
 				"data": map[string]string{"id": strconv.FormatInt(int64(o.Index), 10)},
 			}
 		case *message.VoiceElement:
-			m = MSG{
+			m = global.MSG{
 				"type": "record",
 				"data": map[string]string{"file": o.Name, "url": o.Url},
 			}
 		case *message.ShortVideoElement:
-			m = MSG{
+			m = global.MSG{
 				"type": "video",
 				"data": map[string]string{"file": o.Name, "url": o.Url},
 			}
 		case *message.GroupImageElement:
-			data := map[string]string{"file": hex.EncodeToString(o.Md5) + ".image", "url": o.Url}
+			data := map[string]string{"file": hex.EncodeToString(o.Md5) + ".image", "url": o.Url, "subType": strconv.FormatInt(int64(o.ImageBizType), 10)}
 			switch {
 			case o.Flash:
 				data["type"] = "flash"
@@ -219,7 +221,7 @@ func ToArrayMessage(e []message.IMessageElement, groupID int64) (r []MSG) {
 				data["type"] = "show"
 				data["id"] = strconv.FormatInt(int64(o.EffectID), 10)
 			}
-			m = MSG{
+			m = global.MSG{
 				"type": "image",
 				"data": data,
 			}
@@ -228,18 +230,18 @@ func ToArrayMessage(e []message.IMessageElement, groupID int64) (r []MSG) {
 			if o.Flash {
 				data["type"] = "flash"
 			}
-			m = MSG{
+			m = global.MSG{
 				"type": "image",
 				"data": data,
 			}
 		case *message.ServiceElement:
 			if isOk := strings.Contains(o.Content, "<?xml"); isOk {
-				m = MSG{
+				m = global.MSG{
 					"type": "xml",
 					"data": map[string]string{"data": o.Content, "resid": strconv.FormatInt(int64(o.Id), 10)},
 				}
 			} else {
-				m = MSG{
+				m = global.MSG{
 					"type": "json",
 					"data": map[string]string{"data": o.Content, "resid": strconv.FormatInt(int64(o.Id), 10)},
 				}
@@ -328,6 +330,7 @@ func ToStringMessage(e []message.IMessageElement, groupID int64, isRaw ...bool) 
 			} else if o.EffectID != 0 {
 				arg = ",type=show,id=" + strconv.FormatInt(int64(o.EffectID), 10)
 			}
+			arg += ",subType=" + strconv.FormatInt(int64(o.ImageBizType), 10)
 			if ur {
 				write("[CQ:image,file=%s%s]", hex.EncodeToString(o.Md5)+".image", arg)
 			} else {
@@ -376,7 +379,7 @@ func (bot *CQBot) ConvertStringMessage(raw string, isGroup bool) (r []message.IM
 			switch {
 			case customText != "":
 				var elem *message.ReplyElement
-				var org MSG
+				var org global.MSG
 				sender, senderErr := strconv.ParseInt(d["qq"], 10, 64)
 				if senderErr != nil && err != nil {
 					log.Warnf("警告: 自定义 Reply 元素中必须包含 Uin 或 id")
@@ -548,7 +551,7 @@ func (bot *CQBot) ConvertObjectMessage(m gjson.Result, isGroup bool) (r []messag
 			switch {
 			case customText != "":
 				var elem *message.ReplyElement
-				var org MSG
+				var org global.MSG
 				sender, senderErr := strconv.ParseInt(e.Get("data.[user_id,qq]").String(), 10, 64)
 				if senderErr != nil && err != nil {
 					log.Warnf("警告: 自定义 Reply 元素中必须包含 user_id 或 id")
@@ -692,6 +695,8 @@ func (bot *CQBot) ToElement(t string, d map[string]string, isGroup bool) (m inte
 		case *message.GroupImageElement:
 			img.Flash = flash
 			img.EffectID = int32(id)
+			i, _ := strconv.ParseInt(d["subType"], 10, 64)
+			img.ImageBizType = message.ImageBizType(i)
 		case *message.FriendImageElement:
 			img.Flash = flash
 		}
@@ -731,9 +736,16 @@ func (bot *CQBot) ToElement(t string, d map[string]string, isGroup bool) (m inte
 			return nil, err
 		}
 		if !SkipMimeScan && !global.IsAMRorSILK(data) {
-			mt := mimetype.Detect(data).String()
-			if !mimetype.EqualsAny(mt, lawfulAudioTypes...) {
-				return nil, errors.New("audio type error: " + mt)
+			mt := mimetype.Detect(data)
+			lawful := false
+			for _, lt := range lawfulAudioTypes {
+				if mt.Is(lt) {
+					lawful = true
+					break
+				}
+			}
+			if !lawful {
+				return nil, errors.New("audio type error: " + mt.String())
 			}
 		}
 		if !global.IsAMRorSILK(data) {
@@ -895,7 +907,10 @@ func (bot *CQBot) ToElement(t string, d map[string]string, isGroup bool) (m inte
 		if err != nil {
 			return nil, err
 		}
-		v := file.(*LocalVideoElement)
+		v, ok := file.(*LocalVideoElement)
+		if !ok {
+			return file, nil
+		}
 		if v.File == "" {
 			return v, nil
 		}
@@ -1102,7 +1117,7 @@ func (bot *CQBot) makeImageOrVideoElem(d map[string]string, video, group bool) (
 		return &LocalImageElement{File: fu.Path}, nil
 	}
 	if strings.HasPrefix(f, "base64") && !video {
-		b, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(f, "base64://"))
+		b, err := global.Base64DecodeString(strings.TrimPrefix(f, "base64://"))
 		if err != nil {
 			return nil, err
 		}
@@ -1117,14 +1132,14 @@ func (bot *CQBot) makeImageOrVideoElem(d map[string]string, video, group bool) (
 		if path.Ext(rawPath) == ".video" {
 			b, _ := os.ReadFile(rawPath)
 			r := binary.NewReader(b)
-			return &LocalVideoElement{ShortVideoElement: message.ShortVideoElement{ // todo 检查缓存是否有效
+			return &message.ShortVideoElement{ // todo 检查缓存是否有效
 				Md5:       r.ReadBytes(16),
 				ThumbMd5:  r.ReadBytes(16),
 				Size:      r.ReadInt32(),
 				ThumbSize: r.ReadInt32(),
 				Name:      r.ReadString(),
 				Uuid:      r.ReadAvailable(),
-			}}, nil
+			}, nil
 		}
 		return &LocalVideoElement{File: rawPath}, nil
 	}
@@ -1133,72 +1148,50 @@ func (bot *CQBot) makeImageOrVideoElem(d map[string]string, video, group bool) (
 		exist = true
 		rawPath = path.Join(global.ImagePathOld, f)
 	}
-	if !exist && global.PathExists(rawPath+".cqimg") {
-		exist = true
-		rawPath += ".cqimg"
+	if !exist {
+		if d["url"] != "" {
+			return bot.makeImageOrVideoElem(map[string]string{"file": d["url"]}, false, group)
+		}
+		return nil, errors.New("invalid image")
 	}
-	if !exist && d["url"] != "" {
-		return bot.makeImageOrVideoElem(map[string]string{"file": d["url"]}, false, group)
+	if path.Ext(rawPath) != ".image" {
+		return &LocalImageElement{File: rawPath}, nil
 	}
-	if exist {
-		if path.Ext(rawPath) != ".image" && path.Ext(rawPath) != ".cqimg" {
-			return &LocalImageElement{File: rawPath}, nil
-		}
-		b, err := os.ReadFile(rawPath)
-		if err != nil {
-			return nil, err
-		}
-		if len(b) < 20 {
-			return nil, errors.New("invalid local file")
-		}
-		var (
-			size     int32
-			hash     []byte
-			imageURL string
-		)
-		if path.Ext(rawPath) == ".cqimg" {
-			for _, line := range strings.Split(global.ReadAllText(rawPath), "\n") {
-				kv := strings.SplitN(line, "=", 2)
-				switch kv[0] {
-				case "md5":
-					hash, _ = hex.DecodeString(strings.ReplaceAll(kv[1], "\r", ""))
-				case "size":
-					t, _ := strconv.Atoi(strings.ReplaceAll(kv[1], "\r", ""))
-					size = int32(t)
-				}
-			}
-		} else {
-			r := binary.NewReader(b)
-			hash = r.ReadBytes(16)
-			size = r.ReadInt32()
-			r.ReadString()
-			imageURL = r.ReadString()
-		}
-		if size == 0 {
-			if imageURL != "" {
-				return bot.makeImageOrVideoElem(map[string]string{"file": imageURL}, false, group)
-			}
-			return nil, errors.New("img size is 0")
-		}
-		if len(hash) != 16 {
-			return nil, errors.New("invalid hash")
-		}
-		var rsp message.IMessageElement
-		if group {
-			rsp, err = bot.Client.QueryGroupImage(int64(rand.Uint32()), hash, size)
-			goto ok
-		}
-		rsp, err = bot.Client.QueryFriendImage(int64(rand.Uint32()), hash, size)
-	ok:
-		if err != nil {
-			if imageURL != "" {
-				return bot.makeImageOrVideoElem(map[string]string{"file": imageURL}, false, group)
-			}
-			return nil, err
-		}
-		return rsp, nil
+	b, err := os.ReadFile(rawPath)
+	if err != nil {
+		return nil, err
 	}
-	return nil, errors.New("invalid image")
+	if len(b) < 20 {
+		return nil, errors.New("invalid local file")
+	}
+	r := binary.NewReader(b)
+	hash := r.ReadBytes(16)
+	size := r.ReadInt32()
+	r.ReadString()
+	imageURL := r.ReadString()
+	if size == 0 {
+		if imageURL != "" {
+			return bot.makeImageOrVideoElem(map[string]string{"file": imageURL}, false, group)
+		}
+		return nil, errors.New("img size is 0")
+	}
+	if len(hash) != 16 {
+		return nil, errors.New("invalid hash")
+	}
+	var rsp message.IMessageElement
+	if group {
+		rsp, err = bot.Client.QueryGroupImage(int64(rand.Uint32()), hash, size)
+		goto ok
+	}
+	rsp, err = bot.Client.QueryFriendImage(int64(rand.Uint32()), hash, size)
+ok:
+	if err != nil {
+		if imageURL != "" {
+			return bot.makeImageOrVideoElem(map[string]string{"file": imageURL}, false, group)
+		}
+		return nil, err
+	}
+	return rsp, nil
 }
 
 // makeShowPic 一种xml 方式发送的群消息图片

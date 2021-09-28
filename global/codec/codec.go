@@ -1,7 +1,8 @@
-//go:build (linux || (windows && !arm) || darwin) && (386 || amd64 || arm || arm64) && !race
-// +build linux windows,!arm darwin
+//go:build (linux || (windows && !arm && !arm64) || darwin) && (386 || amd64 || arm || arm64) && !race && !nosilk
+// +build linux windows,!arm,!arm64 darwin
 // +build 386 amd64 arm arm64
 // +build !race
+// +build !nosilk
 
 package codec
 
@@ -29,6 +30,10 @@ func EncodeToSilk(record []byte, tempName string, useCache bool) (silkWav []byte
 	// 2.转换pcm
 	pcmPath := path.Join(silkCachePath, tempName+".pcm")
 	cmd := exec.Command("ffmpeg", "-i", rawPath, "-f", "s16le", "-ar", "24000", "-ac", "1", pcmPath)
+	if Debug {
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+	}
 	if err = cmd.Run(); err != nil {
 		return nil, errors.Wrap(err, "convert pcm file error")
 	}

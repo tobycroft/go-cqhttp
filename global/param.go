@@ -8,9 +8,14 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/Mrs4s/MiraiGo/utils"
+	"github.com/segmentio/asm/base64"
 	log "github.com/sirupsen/logrus"
 	"github.com/tidwall/gjson"
 )
+
+// MSG 消息Map
+type MSG map[string]interface{}
 
 // EnsureBool 判断给定的p是否可表示为合法Bool类型,否则返回defaultVal
 //
@@ -96,13 +101,14 @@ func SetAtDefault(variable, value, defaultValue interface{}) {
 	if v.Kind() != reflect.Ptr || v.IsNil() {
 		return
 	}
-	if v.Elem().Interface() != defaultValue {
+	v = v.Elem()
+	if v.Interface() != defaultValue {
 		return
 	}
-	if v.Elem().Kind() != v2.Kind() {
+	if v.Kind() != v2.Kind() {
 		return
 	}
-	v.Elem().Set(v2)
+	v.Set(v2)
 }
 
 // SetExcludeDefault 在目标值 value 不为默认值 defaultValue 时修改 variable 为 value
@@ -112,13 +118,14 @@ func SetExcludeDefault(variable, value, defaultValue interface{}) {
 	if v.Kind() != reflect.Ptr || v.IsNil() {
 		return
 	}
-	if v2.Elem().Interface() != defaultValue {
+	v = v.Elem()
+	if reflect.Indirect(v2).Interface() != defaultValue {
 		return
 	}
-	if v.Elem().Kind() != v2.Kind() {
+	if v.Kind() != v2.Kind() {
 		return
 	}
-	v.Elem().Set(v2)
+	v.Set(v2)
 }
 
 var (
@@ -149,4 +156,14 @@ func SplitURL(s string) []string {
 	}
 	result = append(result, s[last:])
 	return result
+}
+
+// Base64DecodeString decode base64 with avx2
+// see https://github.com/segmentio/asm/issues/50
+// avoid incorrect unsafe usage in origin library
+func Base64DecodeString(s string) ([]byte, error) {
+	e := base64.StdEncoding
+	dst := make([]byte, e.DecodedLen(len(s)))
+	n, err := e.Decode(dst, utils.S2B(s))
+	return dst[:n], err
 }
