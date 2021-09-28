@@ -3,6 +3,7 @@ package coolq
 import (
 	"crypto/md5"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"math"
 	"os"
@@ -17,6 +18,7 @@ import (
 	"github.com/Mrs4s/MiraiGo/binary"
 	"github.com/Mrs4s/MiraiGo/client"
 	"github.com/Mrs4s/MiraiGo/message"
+	"github.com/Mrs4s/MiraiGo/utils"
 	log "github.com/sirupsen/logrus"
 	"github.com/tidwall/gjson"
 
@@ -39,16 +41,16 @@ func init() {
 // CQGetLoginInfo 获取登录号信息
 //
 // https://git.io/Jtz1I
-func (bot *CQBot) CQGetLoginInfo() MSG {
-	return OK(MSG{"user_id": bot.Client.Uin, "nickname": bot.Client.Nickname})
+func (bot *CQBot) CQGetLoginInfo() global.MSG {
+	return OK(global.MSG{"user_id": bot.Client.Uin, "nickname": bot.Client.Nickname})
 }
 
 // CQGetQiDianAccountInfo 获取企点账号信息
-func (bot *CQBot) CQGetQiDianAccountInfo() MSG {
+func (bot *CQBot) CQGetQiDianAccountInfo() global.MSG {
 	if bot.Client.QiDian == nil {
 		return Failed(100, "QIDIAN_PROTOCOL_REQUEST", "请使用企点协议")
 	}
-	return OK(MSG{
+	return OK(global.MSG{
 		"master_id":   bot.Client.QiDian.MasterUin,
 		"ext_name":    bot.Client.QiDian.ExtName,
 		"create_time": bot.Client.QiDian.CreateTime,
@@ -58,10 +60,10 @@ func (bot *CQBot) CQGetQiDianAccountInfo() MSG {
 // CQGetFriendList 获取好友列表
 //
 // https://git.io/Jtz1L
-func (bot *CQBot) CQGetFriendList() MSG {
-	fs := make([]MSG, 0, len(bot.Client.FriendList))
+func (bot *CQBot) CQGetFriendList() global.MSG {
+	fs := make([]global.MSG, 0, len(bot.Client.FriendList))
 	for _, f := range bot.Client.FriendList {
-		fs = append(fs, MSG{
+		fs = append(fs, global.MSG{
 			"nickname": f.Nickname,
 			"remark":   f.Remark,
 			"user_id":  f.Uin,
@@ -70,10 +72,51 @@ func (bot *CQBot) CQGetFriendList() MSG {
 	return OK(fs)
 }
 
+// CQGetUnidirectionalFriendList 获取单向好友列表
+//
+//
+func (bot *CQBot) CQGetUnidirectionalFriendList() global.MSG {
+	list, err := bot.Client.GetUnidirectionalFriendList()
+	if err != nil {
+		log.Errorf("获取单向好友列表时出现错误: %v", err)
+		return Failed(100, "API_ERROR", err.Error())
+	}
+	fs := make([]global.MSG, 0, len(list))
+	for _, f := range list {
+		fs = append(fs, global.MSG{
+			"nickname": f.Nickname,
+			"user_id":  f.Uin,
+			"source":   f.Source,
+		})
+	}
+	return OK(fs)
+}
+
+// CQDeleteUnidirectionalFriend 删除单向好友
+//
+//
+func (bot *CQBot) CQDeleteUnidirectionalFriend(uin int64) global.MSG {
+	list, err := bot.Client.GetUnidirectionalFriendList()
+	if err != nil {
+		log.Errorf("获取单向好友列表时出现错误: %v", err)
+		return Failed(100, "API_ERROR", err.Error())
+	}
+	for _, f := range list {
+		if f.Uin == uin {
+			if err = bot.Client.DeleteUnidirectionalFriend(uin); err != nil {
+				log.Errorf("删除单向好友时出现错误: %v", err)
+				return Failed(100, "API_ERROR", err.Error())
+			}
+			return OK(nil)
+		}
+	}
+	return Failed(100, "FRIEND_NOT_FOUND", "好友不存在")
+}
+
 // CQDeleteFriend 删除好友
 //
 //
-func (bot *CQBot) CQDeleteFriend(uin int64) MSG {
+func (bot *CQBot) CQDeleteFriend(uin int64) global.MSG {
 	if bot.Client.FindFriend(uin) == nil {
 		return Failed(100, "FRIEND_NOT_FOUND", "好友不存在")
 	}
@@ -87,13 +130,13 @@ func (bot *CQBot) CQDeleteFriend(uin int64) MSG {
 // CQGetGroupList 获取群列表
 //
 // https://git.io/Jtz1t
-func (bot *CQBot) CQGetGroupList(noCache bool) MSG {
-	gs := make([]MSG, 0, len(bot.Client.GroupList))
+func (bot *CQBot) CQGetGroupList(noCache bool) global.MSG {
+	gs := make([]global.MSG, 0, len(bot.Client.GroupList))
 	if noCache {
 		_ = bot.Client.ReloadGroupList()
 	}
 	for _, g := range bot.Client.GroupList {
-		gs = append(gs, MSG{
+		gs = append(gs, global.MSG{
 			"group_id":          g.Code,
 			"group_name":        g.Name,
 			"group_memo":        g.Memo,
@@ -109,7 +152,7 @@ func (bot *CQBot) CQGetGroupList(noCache bool) MSG {
 // CQGetGroupInfo 获取群信息
 //
 // https://git.io/Jtz1O
-func (bot *CQBot) CQGetGroupInfo(groupID int64, noCache bool) MSG {
+func (bot *CQBot) CQGetGroupInfo(groupID int64, noCache bool) global.MSG {
 	group := bot.Client.FindGroup(groupID)
 	if group == nil || noCache {
 		group, _ = bot.Client.GetGroupInfo(groupID)
@@ -122,7 +165,7 @@ func (bot *CQBot) CQGetGroupInfo(groupID int64, noCache bool) MSG {
 		}
 		for _, g := range info {
 			if g.Code == groupID {
-				return OK(MSG{
+				return OK(global.MSG{
 					"group_id":          g.Code,
 					"group_name":        g.Name,
 					"group_memo":        g.Memo,
@@ -134,7 +177,7 @@ func (bot *CQBot) CQGetGroupInfo(groupID int64, noCache bool) MSG {
 			}
 		}
 	} else {
-		return OK(MSG{
+		return OK(global.MSG{
 			"group_id":          group.Code,
 			"group_name":        group.Name,
 			"group_memo":        group.Memo,
@@ -150,7 +193,7 @@ func (bot *CQBot) CQGetGroupInfo(groupID int64, noCache bool) MSG {
 // CQGetGroupMemberList 获取群成员列表
 //
 // https://git.io/Jtz13
-func (bot *CQBot) CQGetGroupMemberList(groupID int64, noCache bool) MSG {
+func (bot *CQBot) CQGetGroupMemberList(groupID int64, noCache bool) global.MSG {
 	group := bot.Client.FindGroup(groupID)
 	if group == nil {
 		return Failed(100, "GROUP_NOT_FOUND", "群聊不存在")
@@ -163,7 +206,7 @@ func (bot *CQBot) CQGetGroupMemberList(groupID int64, noCache bool) MSG {
 		}
 		group.Members = t
 	}
-	members := make([]MSG, 0, len(group.Members))
+	members := make([]global.MSG, 0, len(group.Members))
 	for _, m := range group.Members {
 		members = append(members, convertGroupMemberInfo(groupID, m))
 	}
@@ -173,7 +216,7 @@ func (bot *CQBot) CQGetGroupMemberList(groupID int64, noCache bool) MSG {
 // CQGetGroupMemberInfo 获取群成员信息
 //
 // https://git.io/Jtz1s
-func (bot *CQBot) CQGetGroupMemberInfo(groupID, userID int64, noCache bool) MSG {
+func (bot *CQBot) CQGetGroupMemberInfo(groupID, userID int64, noCache bool) global.MSG {
 	group := bot.Client.FindGroup(groupID)
 	if group == nil {
 		return Failed(100, "GROUP_NOT_FOUND", "群聊不存在")
@@ -198,7 +241,7 @@ func (bot *CQBot) CQGetGroupMemberInfo(groupID, userID int64, noCache bool) MSG 
 // CQGetGroupFileSystemInfo 扩展API-获取群文件系统信息
 //
 // https://docs.go-cqhttp.org/api/#%E8%8E%B7%E5%8F%96%E7%BE%A4%E6%96%87%E4%BB%B6%E7%B3%BB%E7%BB%9F%E4%BF%A1%E6%81%AF
-func (bot *CQBot) CQGetGroupFileSystemInfo(groupID int64) MSG {
+func (bot *CQBot) CQGetGroupFileSystemInfo(groupID int64) global.MSG {
 	fs, err := bot.Client.GetGroupFileSystem(groupID)
 	if err != nil {
 		log.Errorf("获取群 %v 文件系统信息失败: %v", groupID, err)
@@ -210,7 +253,7 @@ func (bot *CQBot) CQGetGroupFileSystemInfo(groupID int64) MSG {
 // CQGetGroupRootFiles 扩展API-获取群根目录文件列表
 //
 // https://docs.go-cqhttp.org/api/#%E8%8E%B7%E5%8F%96%E7%BE%A4%E6%A0%B9%E7%9B%AE%E5%BD%95%E6%96%87%E4%BB%B6%E5%88%97%E8%A1%A8
-func (bot *CQBot) CQGetGroupRootFiles(groupID int64) MSG {
+func (bot *CQBot) CQGetGroupRootFiles(groupID int64) global.MSG {
 	fs, err := bot.Client.GetGroupFileSystem(groupID)
 	if err != nil {
 		log.Errorf("获取群 %v 文件系统信息失败: %v", groupID, err)
@@ -221,7 +264,7 @@ func (bot *CQBot) CQGetGroupRootFiles(groupID int64) MSG {
 		log.Errorf("获取群 %v 根目录文件失败: %v", groupID, err)
 		return Failed(100, "FILE_SYSTEM_API_ERROR", err.Error())
 	}
-	return OK(MSG{
+	return OK(global.MSG{
 		"files":   files,
 		"folders": folders,
 	})
@@ -230,7 +273,7 @@ func (bot *CQBot) CQGetGroupRootFiles(groupID int64) MSG {
 // CQGetGroupFilesByFolderID 扩展API-获取群子目录文件列表
 //
 // https://docs.go-cqhttp.org/api/#%E8%8E%B7%E5%8F%96%E7%BE%A4%E5%AD%90%E7%9B%AE%E5%BD%95%E6%96%87%E4%BB%B6%E5%88%97%E8%A1%A8
-func (bot *CQBot) CQGetGroupFilesByFolderID(groupID int64, folderID string) MSG {
+func (bot *CQBot) CQGetGroupFilesByFolderID(groupID int64, folderID string) global.MSG {
 	fs, err := bot.Client.GetGroupFileSystem(groupID)
 	if err != nil {
 		log.Errorf("获取群 %v 文件系统信息失败: %v", groupID, err)
@@ -241,7 +284,7 @@ func (bot *CQBot) CQGetGroupFilesByFolderID(groupID int64, folderID string) MSG 
 		log.Errorf("获取群 %v 根目录 %v 子文件失败: %v", groupID, folderID, err)
 		return Failed(100, "FILE_SYSTEM_API_ERROR", err.Error())
 	}
-	return OK(MSG{
+	return OK(global.MSG{
 		"files":   files,
 		"folders": folders,
 	})
@@ -250,12 +293,12 @@ func (bot *CQBot) CQGetGroupFilesByFolderID(groupID int64, folderID string) MSG 
 // CQGetGroupFileURL 扩展API-获取群文件资源链接
 //
 // https://docs.go-cqhttp.org/api/#%E8%8E%B7%E5%8F%96%E7%BE%A4%E6%96%87%E4%BB%B6%E8%B5%84%E6%BA%90%E9%93%BE%E6%8E%A5
-func (bot *CQBot) CQGetGroupFileURL(groupID int64, fileID string, busID int32) MSG {
+func (bot *CQBot) CQGetGroupFileURL(groupID int64, fileID string, busID int32) global.MSG {
 	url := bot.Client.GetGroupFileUrl(groupID, fileID, busID)
 	if url == "" {
 		return Failed(100, "FILE_SYSTEM_API_ERROR")
 	}
-	return OK(MSG{
+	return OK(global.MSG{
 		"url": url,
 	})
 }
@@ -263,7 +306,7 @@ func (bot *CQBot) CQGetGroupFileURL(groupID int64, fileID string, busID int32) M
 // CQUploadGroupFile 扩展API-上传群文件
 //
 // https://docs.go-cqhttp.org/api/#%E4%B8%8A%E4%BC%A0%E7%BE%A4%E6%96%87%E4%BB%B6
-func (bot *CQBot) CQUploadGroupFile(groupID int64, file, name, folder string) MSG {
+func (bot *CQBot) CQUploadGroupFile(groupID int64, file, name, folder string) global.MSG {
 	if !global.PathExists(file) {
 		log.Errorf("上传群文件 %v 失败: 文件不存在", file)
 		return Failed(100, "FILE_NOT_FOUND", "文件不存在")
@@ -286,7 +329,7 @@ func (bot *CQBot) CQUploadGroupFile(groupID int64, file, name, folder string) MS
 // CQGroupFileCreateFolder 拓展API-创建群文件文件夹
 //
 //
-func (bot *CQBot) CQGroupFileCreateFolder(groupID int64, parentID, name string) MSG {
+func (bot *CQBot) CQGroupFileCreateFolder(groupID int64, parentID, name string) global.MSG {
 	fs, err := bot.Client.GetGroupFileSystem(groupID)
 	if err != nil {
 		log.Errorf("获取群 %v 文件系统信息失败: %v", groupID, err)
@@ -302,7 +345,7 @@ func (bot *CQBot) CQGroupFileCreateFolder(groupID int64, parentID, name string) 
 // CQGroupFileDeleteFolder 拓展API-删除群文件文件夹
 //
 //
-func (bot *CQBot) CQGroupFileDeleteFolder(groupID int64, id string) MSG {
+func (bot *CQBot) CQGroupFileDeleteFolder(groupID int64, id string) global.MSG {
 	fs, err := bot.Client.GetGroupFileSystem(groupID)
 	if err != nil {
 		log.Errorf("获取群 %v 文件系统信息失败: %v", groupID, err)
@@ -318,7 +361,7 @@ func (bot *CQBot) CQGroupFileDeleteFolder(groupID int64, id string) MSG {
 // CQGroupFileDeleteFile 拓展API-删除群文件
 //
 //
-func (bot *CQBot) CQGroupFileDeleteFile(groupID int64, id string, busID int32) MSG {
+func (bot *CQBot) CQGroupFileDeleteFile(groupID int64, id string, busID int32) global.MSG {
 	fs, err := bot.Client.GetGroupFileSystem(groupID)
 	if err != nil {
 		log.Errorf("获取群 %v 文件系统信息失败: %v", groupID, err)
@@ -334,7 +377,7 @@ func (bot *CQBot) CQGroupFileDeleteFile(groupID int64, id string, busID int32) M
 // CQGetWordSlices 隐藏API-获取中文分词
 //
 // https://docs.go-cqhttp.org/api/#%E8%8E%B7%E5%8F%96%E4%B8%AD%E6%96%87%E5%88%86%E8%AF%8D-%E9%9A%90%E8%97%8F-api
-func (bot *CQBot) CQGetWordSlices(content string) MSG {
+func (bot *CQBot) CQGetWordSlices(content string) global.MSG {
 	slices, err := bot.Client.GetWordSegmentation(content)
 	if err != nil {
 		return Failed(100, "WORD_SEGMENTATION_API_ERROR", err.Error())
@@ -342,13 +385,13 @@ func (bot *CQBot) CQGetWordSlices(content string) MSG {
 	for i := 0; i < len(slices); i++ {
 		slices[i] = strings.ReplaceAll(slices[i], "\u0000", "")
 	}
-	return OK(MSG{"slices": slices})
+	return OK(global.MSG{"slices": slices})
 }
 
 // CQSendGroupMessage 发送群消息
 //
 // https://git.io/Jtz1c
-func (bot *CQBot) CQSendGroupMessage(groupID int64, m gjson.Result, autoEscape bool) MSG {
+func (bot *CQBot) CQSendGroupMessage(groupID int64, m gjson.Result, autoEscape bool) global.MSG {
 	group := bot.Client.FindGroup(groupID)
 	if group == nil {
 		return Failed(100, "GROUP_NOT_FOUND", "群聊不存在")
@@ -366,44 +409,38 @@ func (bot *CQBot) CQSendGroupMessage(groupID int64, m gjson.Result, autoEscape b
 		}
 	}
 
-	if m.Type == gjson.JSON {
-		elem := bot.ConvertObjectMessage(m, true)
-		fixAt(elem)
-		mid := bot.SendGroupMessage(groupID, &message.SendingMessage{Elements: elem})
-		if mid == -1 {
-			return Failed(100, "SEND_MSG_API_ERROR", "请参考 go-cqhttp 端输出")
-		}
-		log.Infof("发送群 %v(%v) 的消息: %v (%v)", group.Name, groupID, limitedString(ToStringMessage(elem, groupID)), mid)
-		return OK(MSG{"message_id": mid})
-	}
-	str := m.String()
-	if str == "" {
-		log.Warn("群消息发送失败: 信息为空.")
-		return Failed(100, "EMPTY_MSG_ERROR", "消息为空")
-	}
 	var elem []message.IMessageElement
-	if autoEscape {
-		elem = append(elem, message.NewText(str))
+	if m.Type == gjson.JSON {
+		elem = bot.ConvertObjectMessage(m, true)
 	} else {
-		elem = bot.ConvertStringMessage(str, true)
+		str := m.String()
+		if str == "" {
+			log.Warn("群消息发送失败: 信息为空.")
+			return Failed(100, "EMPTY_MSG_ERROR", "消息为空")
+		}
+		if autoEscape {
+			elem = []message.IMessageElement{message.NewText(str)}
+		} else {
+			elem = bot.ConvertStringMessage(str, true)
+		}
 	}
 	fixAt(elem)
 	mid := bot.SendGroupMessage(groupID, &message.SendingMessage{Elements: elem})
 	if mid == -1 {
 		return Failed(100, "SEND_MSG_API_ERROR", "请参考 go-cqhttp 端输出")
 	}
-	log.Infof("发送群 %v(%v) 的消息: %v (%v)", group.Name, groupID, limitedString(str), mid)
-	return OK(MSG{"message_id": mid})
+	log.Infof("发送群 %v(%v) 的消息: %v (%v)", group.Name, groupID, limitedString(m.String()), mid)
+	return OK(global.MSG{"message_id": mid})
 }
 
 // CQSendGroupForwardMessage 扩展API-发送合并转发(群)
 //
 // https://docs.go-cqhttp.org/api/#%E5%8F%91%E9%80%81%E5%90%88%E5%B9%B6%E8%BD%AC%E5%8F%91-%E7%BE%A4
-func (bot *CQBot) CQSendGroupForwardMessage(groupID int64, m gjson.Result) MSG {
+func (bot *CQBot) CQSendGroupForwardMessage(groupID int64, m gjson.Result) global.MSG {
 	if m.Type != gjson.JSON {
 		return Failed(100)
 	}
-	var sendNodes []*message.ForwardNode
+	fm := message.NewForwardMessage()
 	ts := time.Now().Add(-time.Minute * 5)
 	hasCustom := false
 	m.ForEach(func(_, item gjson.Result) bool {
@@ -414,8 +451,23 @@ func (bot *CQBot) CQSendGroupForwardMessage(groupID int64, m gjson.Result) MSG {
 		return true
 	})
 
-	var convert func(e gjson.Result) []*message.ForwardNode
-	convert = func(e gjson.Result) (nodes []*message.ForwardNode) {
+	resolveElement := func(elems []message.IMessageElement) []message.IMessageElement {
+		for i, elem := range elems {
+			switch elem.(type) {
+			case *LocalImageElement, *LocalVideoElement:
+				gm, err := bot.uploadMedia(elem, groupID, true)
+				if err != nil {
+					log.Warnf("警告: 群 %d %s上传失败: %v", groupID, elem.Type().String(), err)
+					continue
+				}
+				elems[i] = gm
+			}
+		}
+		return elems
+	}
+
+	var convert func(e gjson.Result) *message.ForwardNode
+	convert = func(e gjson.Result) *message.ForwardNode {
 		if e.Get("type").Str != "node" {
 			return nil
 		}
@@ -425,7 +477,7 @@ func (bot *CQBot) CQSendGroupForwardMessage(groupID int64, m gjson.Result) MSG {
 			m := bot.GetMessage(int32(i))
 			if m != nil {
 				sender := m["sender"].(message.Sender)
-				nodes = append(nodes, &message.ForwardNode{
+				return &message.ForwardNode{
 					SenderId:   sender.Uin,
 					SenderName: (&sender).DisplayName(),
 					Time: func() int32 {
@@ -435,12 +487,11 @@ func (bot *CQBot) CQSendGroupForwardMessage(groupID int64, m gjson.Result) MSG {
 						}
 						return msgTime
 					}(),
-					Message: bot.ConvertStringMessage(m["message"].(string), true),
-				})
-				return
+					Message: resolveElement(bot.ConvertStringMessage(m["message"].(string), true)),
+				}
 			}
 			log.Warnf("警告: 引用消息 %v 错误或数据库未开启.", e.Get("data.id").Str)
-			return
+			return nil
 		}
 		uin := e.Get("data.[user_id,uin].0").Int()
 		msgTime := e.Get("data.time").Int()
@@ -450,68 +501,64 @@ func (bot *CQBot) CQSendGroupForwardMessage(groupID int64, m gjson.Result) MSG {
 		name := e.Get("data.name").Str
 		c := e.Get("data.content")
 		if c.IsArray() {
-			flag := false
+			nested := false
 			c.ForEach(func(_, value gjson.Result) bool {
 				if value.Get("type").Str == "node" {
-					flag = true
+					nested = true
 					return false
 				}
 				return true
 			})
-			if flag {
-				var taowa []*message.ForwardNode
+			if nested { // 处理嵌套
+				nest := message.NewForwardMessage()
 				for _, item := range c.Array() {
-					taowa = append(taowa, convert(item)...)
+					node := convert(item)
+					if node != nil {
+						nest.AddNode(node)
+					}
 				}
-				nodes = append(nodes, &message.ForwardNode{
+				elem := bot.Client.UploadGroupForwardMessage(groupID, nest)
+				return &message.ForwardNode{
 					SenderId:   uin,
 					SenderName: name,
 					Time:       int32(msgTime),
-					Message:    []message.IMessageElement{bot.Client.UploadGroupForwardMessage(groupID, &message.ForwardMessage{Nodes: taowa})},
-				})
-				return
+					Message:    []message.IMessageElement{elem},
+				}
 			}
 		}
 		content := bot.ConvertObjectMessage(e.Get("data.content"), true)
 		if uin != 0 && name != "" && len(content) > 0 {
-			var newElem []message.IMessageElement
-			for _, elem := range content {
-				switch elem.(type) {
-				case *LocalImageElement, *LocalVideoElement:
-					gm, err := bot.uploadMedia(elem, groupID, true)
-					if err != nil {
-						log.Warnf("警告: 群 %d %s上传失败: %v", groupID, elem.Type().String(), err)
-						continue
-					}
-					elem = gm
-				}
-				newElem = append(newElem, elem)
-			}
-			nodes = append(nodes, &message.ForwardNode{
+			return &message.ForwardNode{
 				SenderId:   uin,
 				SenderName: name,
 				Time:       int32(msgTime),
-				Message:    newElem,
-			})
-			return
+				Message:    resolveElement(content),
+			}
 		}
 		log.Warnf("警告: 非法 Forward node 将跳过. uin: %v name: %v content count: %v", uin, name, len(content))
-		return
+		return nil
 	}
 	if m.IsArray() {
 		for _, item := range m.Array() {
-			sendNodes = append(sendNodes, convert(item)...)
+			node := convert(item)
+			if node != nil {
+				fm.AddNode(node)
+			}
 		}
 	} else {
-		sendNodes = convert(m)
+		node := convert(m)
+		if node != nil {
+			fm.AddNode(node)
+		}
 	}
-	if len(sendNodes) > 0 {
-		ret := bot.Client.SendGroupForwardMessage(groupID, &message.ForwardMessage{Nodes: sendNodes})
+	if fm.Length() > 0 {
+		fe := bot.Client.UploadGroupForwardMessage(groupID, fm)
+		ret := bot.Client.SendGroupForwardMessage(groupID, fe)
 		if ret == nil || ret.Id == -1 {
 			log.Warnf("合并转发(群)消息发送失败: 账号可能被风控.")
 			return Failed(100, "SEND_MSG_API_ERROR", "请参考 go-cqhttp 端输出")
 		}
-		return OK(MSG{
+		return OK(global.MSG{
 			"message_id": bot.InsertGroupMessage(ret),
 		})
 	}
@@ -521,38 +568,33 @@ func (bot *CQBot) CQSendGroupForwardMessage(groupID int64, m gjson.Result) MSG {
 // CQSendPrivateMessage 发送私聊消息
 //
 // https://git.io/Jtz1l
-func (bot *CQBot) CQSendPrivateMessage(userID int64, groupID int64, m gjson.Result, autoEscape bool) MSG {
-	if m.Type == gjson.JSON {
-		elem := bot.ConvertObjectMessage(m, false)
-		mid := bot.SendPrivateMessage(userID, groupID, &message.SendingMessage{Elements: elem})
-		if mid == -1 {
-			return Failed(100, "SEND_MSG_API_ERROR", "请参考 go-cqhttp 端输出")
-		}
-		log.Infof("发送好友 %v(%v)  的消息: %v (%v)", userID, userID, limitedString(m.String()), mid)
-		return OK(MSG{"message_id": mid})
-	}
-	str := m.String()
-	if str == "" {
-		return Failed(100, "EMPTY_MSG_ERROR", "消息为空")
-	}
+func (bot *CQBot) CQSendPrivateMessage(userID int64, groupID int64, m gjson.Result, autoEscape bool) global.MSG {
 	var elem []message.IMessageElement
-	if autoEscape {
-		elem = append(elem, message.NewText(str))
+	if m.Type == gjson.JSON {
+		elem = bot.ConvertObjectMessage(m, false)
 	} else {
-		elem = bot.ConvertStringMessage(str, false)
+		str := m.String()
+		if str == "" {
+			return Failed(100, "EMPTY_MSG_ERROR", "消息为空")
+		}
+		if autoEscape {
+			elem = []message.IMessageElement{message.NewText(str)}
+		} else {
+			elem = bot.ConvertStringMessage(str, false)
+		}
 	}
 	mid := bot.SendPrivateMessage(userID, groupID, &message.SendingMessage{Elements: elem})
 	if mid == -1 {
 		return Failed(100, "SEND_MSG_API_ERROR", "请参考 go-cqhttp 端输出")
 	}
-	log.Infof("发送好友 %v(%v)  的消息: %v (%v)", userID, userID, limitedString(str), mid)
-	return OK(MSG{"message_id": mid})
+	log.Infof("发送好友 %v(%v)  的消息: %v (%v)", userID, userID, limitedString(m.String()), mid)
+	return OK(global.MSG{"message_id": mid})
 }
 
 // CQSetGroupCard 设置群名片(群备注)
 //
 // https://git.io/Jtz1B
-func (bot *CQBot) CQSetGroupCard(groupID, userID int64, card string) MSG {
+func (bot *CQBot) CQSetGroupCard(groupID, userID int64, card string) global.MSG {
 	if g := bot.Client.FindGroup(groupID); g != nil {
 		if m := g.FindMember(userID); m != nil {
 			m.EditCard(card)
@@ -565,7 +607,7 @@ func (bot *CQBot) CQSetGroupCard(groupID, userID int64, card string) MSG {
 // CQSetGroupSpecialTitle 设置群组专属头衔
 //
 // https://git.io/Jtz10
-func (bot *CQBot) CQSetGroupSpecialTitle(groupID, userID int64, title string) MSG {
+func (bot *CQBot) CQSetGroupSpecialTitle(groupID, userID int64, title string) global.MSG {
 	if g := bot.Client.FindGroup(groupID); g != nil {
 		if m := g.FindMember(userID); m != nil {
 			m.EditSpecialTitle(title)
@@ -578,7 +620,7 @@ func (bot *CQBot) CQSetGroupSpecialTitle(groupID, userID int64, title string) MS
 // CQSetGroupName 设置群名
 //
 // https://git.io/Jtz12
-func (bot *CQBot) CQSetGroupName(groupID int64, name string) MSG {
+func (bot *CQBot) CQSetGroupName(groupID int64, name string) global.MSG {
 	if g := bot.Client.FindGroup(groupID); g != nil {
 		g.UpdateName(name)
 		return OK(nil)
@@ -589,7 +631,7 @@ func (bot *CQBot) CQSetGroupName(groupID int64, name string) MSG {
 // CQSetGroupMemo 扩展API-发送群公告
 //
 // https://docs.go-cqhttp.org/api/#%E5%8F%91%E9%80%81%E7%BE%A4%E5%85%AC%E5%91%8A
-func (bot *CQBot) CQSetGroupMemo(groupID int64, msg string, img string) MSG {
+func (bot *CQBot) CQSetGroupMemo(groupID int64, msg string, img string) global.MSG {
 	if g := bot.Client.FindGroup(groupID); g != nil {
 		if g.SelfPermission() == client.Member {
 			return Failed(100, "PERMISSION_DENIED", "权限不足")
@@ -617,7 +659,7 @@ func (bot *CQBot) CQSetGroupMemo(groupID int64, msg string, img string) MSG {
 // CQSetGroupKick 群组踢人
 //
 // https://git.io/Jtz1V
-func (bot *CQBot) CQSetGroupKick(groupID, userID int64, msg string, block bool) MSG {
+func (bot *CQBot) CQSetGroupKick(groupID, userID int64, msg string, block bool) global.MSG {
 	if g := bot.Client.FindGroup(groupID); g != nil {
 		if m := g.FindMember(userID); m != nil {
 			err := m.Kick(msg, block)
@@ -633,7 +675,7 @@ func (bot *CQBot) CQSetGroupKick(groupID, userID int64, msg string, block bool) 
 // CQSetGroupBan 群组单人禁言
 //
 // https://git.io/Jtz1w
-func (bot *CQBot) CQSetGroupBan(groupID, userID int64, duration uint32) MSG {
+func (bot *CQBot) CQSetGroupBan(groupID, userID int64, duration uint32) global.MSG {
 	if g := bot.Client.FindGroup(groupID); g != nil {
 		if m := g.FindMember(userID); m != nil {
 			err := m.Mute(duration)
@@ -652,7 +694,7 @@ func (bot *CQBot) CQSetGroupBan(groupID, userID int64, duration uint32) MSG {
 // CQSetGroupWholeBan 群组全员禁言
 //
 // https://git.io/Jtz1o
-func (bot *CQBot) CQSetGroupWholeBan(groupID int64, enable bool) MSG {
+func (bot *CQBot) CQSetGroupWholeBan(groupID int64, enable bool) global.MSG {
 	if g := bot.Client.FindGroup(groupID); g != nil {
 		g.MuteAll(enable)
 		return OK(nil)
@@ -663,7 +705,7 @@ func (bot *CQBot) CQSetGroupWholeBan(groupID int64, enable bool) MSG {
 // CQSetGroupLeave 退出群组
 //
 // https://git.io/Jtz1K
-func (bot *CQBot) CQSetGroupLeave(groupID int64) MSG {
+func (bot *CQBot) CQSetGroupLeave(groupID int64) global.MSG {
 	if g := bot.Client.FindGroup(groupID); g != nil {
 		g.Quit()
 		return OK(nil)
@@ -674,7 +716,7 @@ func (bot *CQBot) CQSetGroupLeave(groupID int64) MSG {
 // CQGetAtAllRemain 扩展API-获取群 @全体成员 剩余次数
 //
 // https://docs.go-cqhttp.org/api/#%E8%8E%B7%E5%8F%96%E7%BE%A4-%E5%85%A8%E4%BD%93%E6%88%90%E5%91%98-%E5%89%A9%E4%BD%99%E6%AC%A1%E6%95%B0
-func (bot *CQBot) CQGetAtAllRemain(groupID int64) MSG {
+func (bot *CQBot) CQGetAtAllRemain(groupID int64) global.MSG {
 	if g := bot.Client.FindGroup(groupID); g != nil {
 		i, err := bot.Client.GetAtAllRemain(groupID)
 		if err != nil {
@@ -688,7 +730,7 @@ func (bot *CQBot) CQGetAtAllRemain(groupID int64) MSG {
 // CQProcessFriendRequest 处理加好友请求
 //
 // https://git.io/Jtz11
-func (bot *CQBot) CQProcessFriendRequest(flag string, approve bool) MSG {
+func (bot *CQBot) CQProcessFriendRequest(flag string, approve bool) global.MSG {
 	req, ok := bot.friendReqCache.Load(flag)
 	if !ok {
 		return Failed(100, "FLAG_NOT_FOUND", "FLAG不存在")
@@ -704,7 +746,7 @@ func (bot *CQBot) CQProcessFriendRequest(flag string, approve bool) MSG {
 // CQProcessGroupRequest 处理加群请求／邀请
 //
 // https://git.io/Jtz1D
-func (bot *CQBot) CQProcessGroupRequest(flag, subType, reason string, approve bool) MSG {
+func (bot *CQBot) CQProcessGroupRequest(flag, subType, reason string, approve bool) global.MSG {
 	msgs, err := bot.Client.GetGroupSystemMessages()
 	if err != nil {
 		log.Errorf("获取群系统消息失败: %v", err)
@@ -748,7 +790,7 @@ func (bot *CQBot) CQProcessGroupRequest(flag, subType, reason string, approve bo
 // CQDeleteMessage 撤回消息
 //
 // https:// git.io/Jtz1y
-func (bot *CQBot) CQDeleteMessage(messageID int32) MSG {
+func (bot *CQBot) CQDeleteMessage(messageID int32) global.MSG {
 	msg := bot.GetMessage(messageID)
 	if msg == nil {
 		return Failed(100, "MESSAGE_NOT_FOUND", "消息不存在")
@@ -779,7 +821,7 @@ func (bot *CQBot) CQDeleteMessage(messageID int32) MSG {
 // CQSetGroupAdmin 群组设置管理员
 //
 // https://git.io/Jtz1S
-func (bot *CQBot) CQSetGroupAdmin(groupID, userID int64, enable bool) MSG {
+func (bot *CQBot) CQSetGroupAdmin(groupID, userID int64, enable bool) global.MSG {
 	group := bot.Client.FindGroup(groupID)
 	if group == nil || group.OwnerUin != bot.Client.Uin {
 		return Failed(100, "PERMISSION_DENIED", "群不存在或权限不足")
@@ -801,12 +843,12 @@ func (bot *CQBot) CQSetGroupAdmin(groupID, userID int64, enable bool) MSG {
 // CQGetVipInfo 扩展API-获取VIP信息
 //
 // https://docs.go-cqhttp.org/api/#%E8%8E%B7%E5%8F%96vip%E4%BF%A1%E6%81%AF
-func (bot *CQBot) CQGetVipInfo(userID int64) MSG {
+func (bot *CQBot) CQGetVipInfo(userID int64) global.MSG {
 	vip, err := bot.Client.GetVipInfo(userID)
 	if err != nil {
 		return Failed(100, "VIP_API_ERROR", err.Error())
 	}
-	msg := MSG{
+	msg := global.MSG{
 		"user_id":          vip.Uin,
 		"nickname":         vip.Name,
 		"level":            vip.Level,
@@ -821,11 +863,11 @@ func (bot *CQBot) CQGetVipInfo(userID int64) MSG {
 // CQGetGroupHonorInfo 获取群荣誉信息
 //
 // https://git.io/Jtz1H
-func (bot *CQBot) CQGetGroupHonorInfo(groupID int64, t string) MSG {
-	msg := MSG{"group_id": groupID}
-	convertMem := func(memList []client.HonorMemberInfo) (ret []MSG) {
+func (bot *CQBot) CQGetGroupHonorInfo(groupID int64, t string) global.MSG {
+	msg := global.MSG{"group_id": groupID}
+	convertMem := func(memList []client.HonorMemberInfo) (ret []global.MSG) {
 		for _, mem := range memList {
-			ret = append(ret, MSG{
+			ret = append(ret, global.MSG{
 				"user_id":     mem.Uin,
 				"nickname":    mem.Name,
 				"avatar":      mem.Avatar,
@@ -837,7 +879,7 @@ func (bot *CQBot) CQGetGroupHonorInfo(groupID int64, t string) MSG {
 	if t == "talkative" || t == "all" {
 		if honor, err := bot.Client.GetGroupHonorInfo(groupID, client.Talkative); err == nil {
 			if honor.CurrentTalkative.Uin != 0 {
-				msg["current_talkative"] = MSG{
+				msg["current_talkative"] = global.MSG{
 					"user_id":   honor.CurrentTalkative.Uin,
 					"nickname":  honor.CurrentTalkative.Name,
 					"avatar":    honor.CurrentTalkative.Avatar,
@@ -878,12 +920,12 @@ func (bot *CQBot) CQGetGroupHonorInfo(groupID int64, t string) MSG {
 // CQGetStrangerInfo 获取陌生人信息
 //
 // https://git.io/Jtz17
-func (bot *CQBot) CQGetStrangerInfo(userID int64) MSG {
+func (bot *CQBot) CQGetStrangerInfo(userID int64) global.MSG {
 	info, err := bot.Client.GetSummaryInfo(userID)
 	if err != nil {
 		return Failed(100, "SUMMARY_API_ERROR", err.Error())
 	}
-	return OK(MSG{
+	return OK(global.MSG{
 		"user_id":  info.Uin,
 		"nickname": info.Nickname,
 		"qid":      info.Qid,
@@ -905,7 +947,7 @@ func (bot *CQBot) CQGetStrangerInfo(userID int64) MSG {
 // CQHandleQuickOperation 隐藏API-对事件执行快速操作
 //
 // https://git.io/Jtz15
-func (bot *CQBot) CQHandleQuickOperation(context, operation gjson.Result) MSG {
+func (bot *CQBot) CQHandleQuickOperation(context, operation gjson.Result) global.MSG {
 	postType := context.Get("post_type").Str
 
 	switch postType {
@@ -920,16 +962,16 @@ func (bot *CQBot) CQHandleQuickOperation(context, operation gjson.Result) MSG {
 			at := operation.Get("at_sender").Bool() && !isAnonymous && msgType == "group"
 			if at && reply.IsArray() {
 				// 在 reply 数组头部插入CQ码
-				replySegments := make([]MSG, 0)
-				segments := make([]MSG, 0)
-				segments = append(segments, MSG{
+				replySegments := make([]global.MSG, 0)
+				segments := make([]global.MSG, 0)
+				segments = append(segments, global.MSG{
 					"type": "at",
-					"data": MSG{
+					"data": global.MSG{
 						"qq": context.Get("sender.user_id").Int(),
 					},
 				})
 
-				err := json.UnmarshalFromString(reply.Raw, &replySegments)
+				err := json.Unmarshal(utils.S2B(reply.Raw), &replySegments)
 				if err != nil {
 					log.WithError(err).Warnf("处理 at_sender 过程中发生错误")
 					return Failed(-1, "处理 at_sender 过程中发生错误", err.Error())
@@ -937,13 +979,13 @@ func (bot *CQBot) CQHandleQuickOperation(context, operation gjson.Result) MSG {
 
 				segments = append(segments, replySegments...)
 
-				modified, err := json.MarshalToString(segments)
+				modified, err := json.Marshal(segments)
 				if err != nil {
 					log.WithError(err).Warnf("处理 at_sender 过程中发生错误")
 					return Failed(-1, "处理 at_sender 过程中发生错误", err.Error())
 				}
 
-				reply = gjson.Parse(modified)
+				reply = gjson.Parse(utils.B2S(modified))
 			} else if at && reply.Type == gjson.String {
 				reply = gjson.Parse(fmt.Sprintf(
 					"\"[CQ:at,qq=%d]%s\"",
@@ -981,10 +1023,10 @@ func (bot *CQBot) CQHandleQuickOperation(context, operation gjson.Result) MSG {
 		reqType := context.Get("request_type").Str
 		if operation.Get("approve").Exists() {
 			if reqType == "friend" {
-				bot.CQProcessFriendRequest(context.Get("flag").Str, operation.Get("approve").Bool())
+				bot.CQProcessFriendRequest(context.Get("flag").String(), operation.Get("approve").Bool())
 			}
 			if reqType == "group" {
-				bot.CQProcessGroupRequest(context.Get("flag").Str, context.Get("sub_type").Str, operation.Get("reason").Str, operation.Get("approve").Bool())
+				bot.CQProcessGroupRequest(context.Get("flag").String(), context.Get("sub_type").Str, operation.Get("reason").Str, operation.Get("approve").Bool())
 			}
 		}
 	}
@@ -994,7 +1036,7 @@ func (bot *CQBot) CQHandleQuickOperation(context, operation gjson.Result) MSG {
 // CQGetImage 获取图片(修改自OneBot)
 //
 // https://docs.go-cqhttp.org/api/#%E8%8E%B7%E5%8F%96%E5%9B%BE%E7%89%87%E4%BF%A1%E6%81%AF
-func (bot *CQBot) CQGetImage(file string) MSG {
+func (bot *CQBot) CQGetImage(file string) global.MSG {
 	if !global.PathExists(path.Join(global.ImagePath, file)) {
 		return Failed(100)
 	}
@@ -1002,7 +1044,7 @@ func (bot *CQBot) CQGetImage(file string) MSG {
 	if err == nil {
 		r := binary.NewReader(b)
 		r.ReadBytes(16)
-		msg := MSG{
+		msg := global.MSG{
 			"size":     r.ReadInt32(),
 			"filename": r.ReadString(),
 			"url":      r.ReadString(),
@@ -1025,7 +1067,7 @@ func (bot *CQBot) CQGetImage(file string) MSG {
 // CQDownloadFile 扩展API-下载文件到缓存目录
 //
 // https://docs.go-cqhttp.org/api/#%E4%B8%8B%E8%BD%BD%E6%96%87%E4%BB%B6%E5%88%B0%E7%BC%93%E5%AD%98%E7%9B%AE%E5%BD%95
-func (bot *CQBot) CQDownloadFile(url string, headers map[string]string, threadCount int) MSG {
+func (bot *CQBot) CQDownloadFile(url string, headers map[string]string, threadCount int) global.MSG {
 	hash := md5.Sum([]byte(url))
 	file := path.Join(global.CachePath, hex.EncodeToString(hash[:])+".cache")
 	if global.PathExists(file) {
@@ -1039,7 +1081,7 @@ func (bot *CQBot) CQDownloadFile(url string, headers map[string]string, threadCo
 		return Failed(100, "DOWNLOAD_FILE_ERROR", err.Error())
 	}
 	abs, _ := filepath.Abs(file)
-	return OK(MSG{
+	return OK(global.MSG{
 		"file": abs,
 	})
 }
@@ -1047,16 +1089,16 @@ func (bot *CQBot) CQDownloadFile(url string, headers map[string]string, threadCo
 // CQGetForwardMessage 获取合并转发消息
 //
 // https://git.io/Jtz1F
-func (bot *CQBot) CQGetForwardMessage(resID string) MSG {
+func (bot *CQBot) CQGetForwardMessage(resID string) global.MSG {
 	m := bot.Client.GetForwardMessage(resID)
 	if m == nil {
 		return Failed(100, "MSG_NOT_FOUND", "消息不存在")
 	}
-	r := make([]MSG, 0, len(m.Nodes))
+	r := make([]global.MSG, 0, len(m.Nodes))
 	for _, n := range m.Nodes {
 		bot.checkMedia(n.Message)
-		r = append(r, MSG{
-			"sender": MSG{
+		r = append(r, global.MSG{
+			"sender": global.MSG{
 				"user_id":  n.SenderId,
 				"nickname": n.SenderName,
 			},
@@ -1064,7 +1106,7 @@ func (bot *CQBot) CQGetForwardMessage(resID string) MSG {
 			"content": ToFormattedMessage(n.Message, 0, false),
 		})
 	}
-	return OK(MSG{
+	return OK(global.MSG{
 		"messages": r,
 	})
 }
@@ -1072,7 +1114,7 @@ func (bot *CQBot) CQGetForwardMessage(resID string) MSG {
 // CQGetMessage 获取消息
 //
 // https://git.io/Jtz1b
-func (bot *CQBot) CQGetMessage(messageID int32) MSG {
+func (bot *CQBot) CQGetMessage(messageID int32) global.MSG {
 	msg := bot.GetMessage(messageID)
 	if msg == nil {
 		return Failed(100, "MSG_NOT_FOUND", "消息不存在")
@@ -1080,7 +1122,7 @@ func (bot *CQBot) CQGetMessage(messageID int32) MSG {
 	sender := msg["sender"].(message.Sender)
 	gid, isGroup := msg["group"]
 	raw := msg["message"].(string)
-	return OK(MSG{
+	return OK(global.MSG{
 		"message_id":  messageID,
 		"real_id":     msg["message-id"],
 		"message_seq": msg["message-id"],
@@ -1092,7 +1134,7 @@ func (bot *CQBot) CQGetMessage(messageID int32) MSG {
 			}
 			return "private"
 		}(),
-		"sender": MSG{
+		"sender": global.MSG{
 			"user_id":  sender.Uin,
 			"nickname": sender.Nickname,
 		},
@@ -1110,7 +1152,7 @@ func (bot *CQBot) CQGetMessage(messageID int32) MSG {
 // CQGetGroupSystemMessages 扩展API-获取群文件系统消息
 //
 // https://docs.go-cqhttp.org/api/#%E8%8E%B7%E5%8F%96%E7%BE%A4%E7%B3%BB%E7%BB%9F%E6%B6%88%E6%81%AF
-func (bot *CQBot) CQGetGroupSystemMessages() MSG {
+func (bot *CQBot) CQGetGroupSystemMessages() global.MSG {
 	msg, err := bot.Client.GetGroupSystemMessages()
 	if err != nil {
 		log.Warnf("获取群系统消息失败: %v", err)
@@ -1122,7 +1164,7 @@ func (bot *CQBot) CQGetGroupSystemMessages() MSG {
 // CQGetGroupMessageHistory 获取群消息历史记录
 //
 // https://docs.go-cqhttp.org/api/#%E8%8E%B7%E5%8F%96%E7%BE%A4%E6%B6%88%E6%81%AF%E5%8E%86%E5%8F%B2%E8%AE%B0%E5%BD%95
-func (bot *CQBot) CQGetGroupMessageHistory(groupID int64, seq int64) MSG {
+func (bot *CQBot) CQGetGroupMessageHistory(groupID int64, seq int64) global.MSG {
 	if g := bot.Client.FindGroup(groupID); g == nil {
 		return Failed(100, "GROUP_NOT_FOUND", "群聊不存在")
 	}
@@ -1138,7 +1180,7 @@ func (bot *CQBot) CQGetGroupMessageHistory(groupID int64, seq int64) MSG {
 		log.Warnf("获取群历史消息失败: %v", err)
 		return Failed(100, "MESSAGES_API_ERROR", err.Error())
 	}
-	ms := make([]MSG, 0, len(msg))
+	ms := make([]global.MSG, 0, len(msg))
 	for _, m := range msg {
 		id := m.Id
 		bot.checkMedia(m.Elements)
@@ -1149,7 +1191,7 @@ func (bot *CQBot) CQGetGroupMessageHistory(groupID int64, seq int64) MSG {
 		t["message_id"] = id
 		ms = append(ms, t)
 	}
-	return OK(MSG{
+	return OK(global.MSG{
 		"messages": ms,
 	})
 }
@@ -1157,22 +1199,22 @@ func (bot *CQBot) CQGetGroupMessageHistory(groupID int64, seq int64) MSG {
 // CQGetOnlineClients 扩展API-获取当前账号在线客户端列表
 //
 // https://docs.go-cqhttp.org/api/#%E8%8E%B7%E5%8F%96%E5%BD%93%E5%89%8D%E8%B4%A6%E5%8F%B7%E5%9C%A8%E7%BA%BF%E5%AE%A2%E6%88%B7%E7%AB%AF%E5%88%97%E8%A1%A8
-func (bot *CQBot) CQGetOnlineClients(noCache bool) MSG {
+func (bot *CQBot) CQGetOnlineClients(noCache bool) global.MSG {
 	if noCache {
 		if err := bot.Client.RefreshStatus(); err != nil {
 			log.Warnf("刷新客户端状态时出现问题 %v", err)
 			return Failed(100, "REFRESH_STATUS_ERROR", err.Error())
 		}
 	}
-	d := make([]MSG, 0, len(bot.Client.OnlineClients))
+	d := make([]global.MSG, 0, len(bot.Client.OnlineClients))
 	for _, oc := range bot.Client.OnlineClients {
-		d = append(d, MSG{
+		d = append(d, global.MSG{
 			"app_id":      oc.AppId,
 			"device_name": oc.DeviceName,
 			"device_kind": oc.DeviceKind,
 		})
 	}
-	return OK(MSG{
+	return OK(global.MSG{
 		"clients": d,
 	})
 }
@@ -1180,21 +1222,21 @@ func (bot *CQBot) CQGetOnlineClients(noCache bool) MSG {
 // CQCanSendImage 检查是否可以发送图片(此处永远返回true)
 //
 // https://git.io/Jtz1N
-func (bot *CQBot) CQCanSendImage() MSG {
-	return OK(MSG{"yes": true})
+func (bot *CQBot) CQCanSendImage() global.MSG {
+	return OK(global.MSG{"yes": true})
 }
 
 // CQCanSendRecord 检查是否可以发送语音(此处永远返回true)
 //
 // https://git.io/Jtz1x
-func (bot *CQBot) CQCanSendRecord() MSG {
-	return OK(MSG{"yes": true})
+func (bot *CQBot) CQCanSendRecord() global.MSG {
+	return OK(global.MSG{"yes": true})
 }
 
 // CQOcrImage 扩展API-图片OCR
 //
 // https://docs.go-cqhttp.org/api/#%E5%9B%BE%E7%89%87-ocr
-func (bot *CQBot) CQOcrImage(imageID string) MSG {
+func (bot *CQBot) CQOcrImage(imageID string) global.MSG {
 	img, err := bot.makeImageOrVideoElem(map[string]string{"file": imageID}, false, true)
 	if err != nil {
 		log.Warnf("load image error: %v", err)
@@ -1211,7 +1253,7 @@ func (bot *CQBot) CQOcrImage(imageID string) MSG {
 // CQSetGroupPortrait 扩展API-设置群头像
 //
 // https://docs.go-cqhttp.org/api/#%E8%AE%BE%E7%BD%AE%E7%BE%A4%E5%A4%B4%E5%83%8F
-func (bot *CQBot) CQSetGroupPortrait(groupID int64, file, cache string) MSG {
+func (bot *CQBot) CQSetGroupPortrait(groupID int64, file, cache string) global.MSG {
 	if g := bot.Client.FindGroup(groupID); g != nil {
 		img, err := global.FindFile(file, cache, global.ImagePath)
 		if err != nil {
@@ -1227,7 +1269,7 @@ func (bot *CQBot) CQSetGroupPortrait(groupID int64, file, cache string) MSG {
 // CQSetGroupAnonymousBan 群组匿名用户禁言
 //
 // https://git.io/Jtz1p
-func (bot *CQBot) CQSetGroupAnonymousBan(groupID int64, flag string, duration int32) MSG {
+func (bot *CQBot) CQSetGroupAnonymousBan(groupID int64, flag string, duration int32) global.MSG {
 	if flag == "" {
 		return Failed(100, "INVALID_FLAG", "无效的flag")
 	}
@@ -1250,8 +1292,8 @@ func (bot *CQBot) CQSetGroupAnonymousBan(groupID int64, flag string, duration in
 // CQGetStatus 获取运行状态
 //
 // https://git.io/JtzMe
-func (bot *CQBot) CQGetStatus() MSG {
-	return OK(MSG{
+func (bot *CQBot) CQGetStatus() global.MSG {
+	return OK(global.MSG{
 		"app_initialized": true,
 		"app_enabled":     true,
 		"plugins_good":    nil,
@@ -1265,7 +1307,7 @@ func (bot *CQBot) CQGetStatus() MSG {
 // CQSetEssenceMessage 扩展API-设置精华消息
 //
 // https://docs.go-cqhttp.org/api/#%E8%AE%BE%E7%BD%AE%E7%B2%BE%E5%8D%8E%E6%B6%88%E6%81%AF
-func (bot *CQBot) CQSetEssenceMessage(messageID int32) MSG {
+func (bot *CQBot) CQSetEssenceMessage(messageID int32) global.MSG {
 	msg := bot.GetMessage(messageID)
 	if msg == nil {
 		return Failed(100, "MESSAGE_NOT_FOUND", "消息不存在")
@@ -1285,7 +1327,7 @@ func (bot *CQBot) CQSetEssenceMessage(messageID int32) MSG {
 // CQDeleteEssenceMessage 扩展API-移出精华消息
 //
 // https://docs.go-cqhttp.org/api/#%E7%A7%BB%E5%87%BA%E7%B2%BE%E5%8D%8E%E6%B6%88%E6%81%AF
-func (bot *CQBot) CQDeleteEssenceMessage(messageID int32) MSG {
+func (bot *CQBot) CQDeleteEssenceMessage(messageID int32) global.MSG {
 	msg := bot.GetMessage(messageID)
 	if msg == nil {
 		return Failed(100, "MESSAGE_NOT_FOUND", "消息不存在")
@@ -1305,7 +1347,7 @@ func (bot *CQBot) CQDeleteEssenceMessage(messageID int32) MSG {
 // CQGetEssenceMessageList 扩展API-获取精华消息列表
 //
 // https://docs.go-cqhttp.org/api/#%E8%8E%B7%E5%8F%96%E7%B2%BE%E5%8D%8E%E6%B6%88%E6%81%AF%E5%88%97%E8%A1%A8
-func (bot *CQBot) CQGetEssenceMessageList(groupCode int64) MSG {
+func (bot *CQBot) CQGetEssenceMessageList(groupCode int64) global.MSG {
 	g := bot.Client.FindGroup(groupCode)
 	if g == nil {
 		return Failed(100, "GROUP_NOT_FOUND", "群聊不存在")
@@ -1314,9 +1356,9 @@ func (bot *CQBot) CQGetEssenceMessageList(groupCode int64) MSG {
 	if err != nil {
 		return Failed(100, "GET_ESSENCE_LIST_FOUND", err.Error())
 	}
-	list := make([]MSG, 0, len(msgList))
+	list := make([]global.MSG, 0, len(msgList))
 	for _, m := range msgList {
-		msg := MSG{
+		msg := global.MSG{
 			"sender_nick":   m.SenderNick,
 			"sender_time":   m.SenderTime,
 			"operator_time": m.AddDigestTime,
@@ -1333,8 +1375,8 @@ func (bot *CQBot) CQGetEssenceMessageList(groupCode int64) MSG {
 // CQCheckURLSafely 扩展API-检查链接安全性
 //
 // https://docs.go-cqhttp.org/api/#%E6%A3%80%E6%9F%A5%E9%93%BE%E6%8E%A5%E5%AE%89%E5%85%A8%E6%80%A7
-func (bot *CQBot) CQCheckURLSafely(url string) MSG {
-	return OK(MSG{
+func (bot *CQBot) CQCheckURLSafely(url string) global.MSG {
+	return OK(global.MSG{
 		"level": bot.Client.CheckUrlSafely(url),
 	})
 }
@@ -1342,9 +1384,9 @@ func (bot *CQBot) CQCheckURLSafely(url string) MSG {
 // CQGetVersionInfo 获取版本信息
 //
 // https://git.io/JtwUs
-func (bot *CQBot) CQGetVersionInfo() MSG {
+func (bot *CQBot) CQGetVersionInfo() global.MSG {
 	wd, _ := os.Getwd()
-	return OK(MSG{
+	return OK(global.MSG{
 		"app_name":                   "go-cqhttp",
 		"app_version":                Version,
 		"app_full_name":              fmt.Sprintf("go-cqhttp-%s_%s_%s-%s", Version, runtime.GOOS, runtime.GOARCH, runtime.Version()),
@@ -1380,19 +1422,19 @@ func (bot *CQBot) CQGetVersionInfo() MSG {
 // CQGetModelShow 获取在线机型
 //
 // https://club.vip.qq.com/onlinestatus/set
-func (bot *CQBot) CQGetModelShow(modelName string) MSG {
+func (bot *CQBot) CQGetModelShow(modelName string) global.MSG {
 	variants, err := bot.Client.GetModelShow(modelName)
 	if err != nil {
 		return Failed(100, "GET_MODEL_SHOW_API_ERROR", "无法获取在线机型")
 	}
-	a := make([]MSG, 0, len(variants))
+	a := make([]global.MSG, 0, len(variants))
 	for _, v := range variants {
-		a = append(a, MSG{
+		a = append(a, global.MSG{
 			"model_show": v.ModelShow,
 			"need_pay":   v.NeedPay,
 		})
 	}
-	return OK(MSG{
+	return OK(global.MSG{
 		"variants": a,
 	})
 }
@@ -1400,7 +1442,7 @@ func (bot *CQBot) CQGetModelShow(modelName string) MSG {
 // CQSetModelShow 设置在线机型
 //
 // https://club.vip.qq.com/onlinestatus/set
-func (bot *CQBot) CQSetModelShow(modelName string, modelShow string) MSG {
+func (bot *CQBot) CQSetModelShow(modelName string, modelShow string) global.MSG {
 	err := bot.Client.SetModelShow(modelName, modelShow)
 	if err != nil {
 		return Failed(100, "SET_MODEL_SHOW_API_ERROR", "无法设置在线机型")
@@ -1408,13 +1450,30 @@ func (bot *CQBot) CQSetModelShow(modelName string, modelShow string) MSG {
 	return OK(nil)
 }
 
+// CQMarkMessageAsRead 标记消息已读
+func (bot *CQBot) CQMarkMessageAsRead(msgID int32) global.MSG {
+	m := bot.GetMessage(msgID)
+	if m == nil {
+		return Failed(100, "MSG_NOT_FOUND", "消息不存在")
+	}
+	if _, ok := m["group"]; ok {
+		bot.Client.MarkGroupMessageReaded(m["group"].(int64), int64(m["message-id"].(int32)))
+		return OK(nil)
+	}
+	if _, ok := m["from-group"]; ok {
+		return Failed(100, "MSG_TYPE_ERROR", "不支持标记临时会话")
+	}
+	bot.Client.MarkPrivateMessageReaded(m["sender"].(message.Sender).Uin, int64(m["time"].(int32)))
+	return OK(nil)
+}
+
 // OK 生成成功返回值
-func OK(data interface{}) MSG {
-	return MSG{"data": data, "retcode": 0, "status": "ok"}
+func OK(data interface{}) global.MSG {
+	return global.MSG{"data": data, "retcode": 0, "status": "ok"}
 }
 
 // Failed 生成失败返回值
-func Failed(code int, msg ...string) MSG {
+func Failed(code int, msg ...string) global.MSG {
 	m := ""
 	w := ""
 	if len(msg) > 0 {
@@ -1423,11 +1482,11 @@ func Failed(code int, msg ...string) MSG {
 	if len(msg) > 1 {
 		w = msg[1]
 	}
-	return MSG{"data": nil, "retcode": code, "msg": m, "wording": w, "status": "failed"}
+	return global.MSG{"data": nil, "retcode": code, "msg": m, "wording": w, "status": "failed"}
 }
 
-func convertGroupMemberInfo(groupID int64, m *client.GroupMemberInfo) MSG {
-	return MSG{
+func convertGroupMemberInfo(groupID int64, m *client.GroupMemberInfo) global.MSG {
+	return global.MSG{
 		"group_id": groupID,
 		"user_id":  m.Uin,
 		"nickname": m.Nickname,
@@ -1441,11 +1500,12 @@ func convertGroupMemberInfo(groupID int64, m *client.GroupMemberInfo) MSG {
 			// unknown = 0xff
 			return "unknown"
 		}(),
-		"age":            0,
-		"area":           "",
-		"join_time":      m.JoinTime,
-		"last_sent_time": m.LastSpeakTime,
-		"level":          strconv.FormatInt(int64(m.Level), 10),
+		"age":               0,
+		"area":              "",
+		"join_time":         m.JoinTime,
+		"last_sent_time":    m.LastSpeakTime,
+		"shut_up_timestamp": m.ShutUpTimestamp,
+		"level":             strconv.FormatInt(int64(m.Level), 10),
 		"role": func() string {
 			switch m.Permission {
 			case client.Owner:

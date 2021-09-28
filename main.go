@@ -19,6 +19,7 @@ import (
 
 	"github.com/Mrs4s/go-cqhttp/coolq"
 	"github.com/Mrs4s/go-cqhttp/global"
+	"github.com/Mrs4s/go-cqhttp/global/codec"
 	"github.com/Mrs4s/go-cqhttp/global/config"
 	"github.com/Mrs4s/go-cqhttp/global/terminal"
 	"github.com/Mrs4s/go-cqhttp/global/update"
@@ -29,7 +30,6 @@ import (
 	"github.com/guonaihong/gout"
 	rotatelogs "github.com/lestrrat-go/file-rotatelogs"
 	log "github.com/sirupsen/logrus"
-	easy "github.com/t-tomalak/logrus-easy-formatter"
 	"github.com/tidwall/gjson"
 	"golang.org/x/crypto/pbkdf2"
 	"golang.org/x/term"
@@ -55,7 +55,7 @@ var (
 )
 
 func main() {
-	c := flag.String("c", config.DefaultConfigFile, "configuration filename default is config.hjson")
+	c := flag.String("c", config.DefaultConfigFile, "configuration filename")
 	d := flag.Bool("d", false, "running as a daemon")
 	h := flag.Bool("h", false, "this help")
 	wd := flag.String("w", "", "cover the working directory")
@@ -79,18 +79,17 @@ func main() {
 	}
 	if conf.Output.Debug {
 		log.SetReportCaller(true)
+		codec.Debug = true
 	}
 
-	logFormatter := &easy.Formatter{
-		TimestampFormat: "2006-01-02 15:04:05",
-		LogFormat:       "[%time%] [%lvl%]: %msg% \n",
-	}
 	rotateOptions := []rotatelogs.Option{
 		rotatelogs.WithRotationTime(time.Hour * 24),
 	}
 
 	if conf.Output.LogAging > 0 {
 		rotateOptions = append(rotateOptions, rotatelogs.WithMaxAge(time.Hour*24*time.Duration(conf.Output.LogAging)))
+	} else {
+		rotateOptions = append(rotateOptions, rotatelogs.WithMaxAge(time.Hour*24*365*10))
 	}
 	if conf.Output.LogForceNew {
 		rotateOptions = append(rotateOptions, rotatelogs.ForceNewFile())
@@ -102,7 +101,7 @@ func main() {
 		panic(err)
 	}
 
-	log.AddHook(global.NewLocalHook(w, logFormatter, global.GetLogLevel(conf.Output.LogLevel)...))
+	log.AddHook(global.NewLocalHook(w, global.LogFormat{}, global.GetLogLevel(conf.Output.LogLevel)...))
 
 	mkCacheDir := func(path string, _type string) {
 		if !global.PathExists(path) {
@@ -137,9 +136,12 @@ func main() {
 		}
 	}
 	if terminal.RunningByDoubleClick() && !isFastStart {
-		log.Warning("警告: 强烈不推荐通过双击直接运行本程序, 这将导致一些非预料的后果.")
-		//log.Warning("将等待10s后启动")
-		//time.Sleep(time.Second * 10)
+		err := terminal.NoMoreDoubleClick()
+		if err != nil {
+			log.Errorf("遇到错误: %v", err)
+			time.Sleep(time.Second * 5)
+		}
+		return
 	}
 
 	if (conf.Account.Uin == 0 || (conf.Account.Password == "" && !conf.Account.Encrypt)) && !global.PathExists("session.token") {
@@ -263,6 +265,7 @@ func main() {
 					text := readLineTimeout(time.Second*5, "1")
 					if text == "2" {
 						_ = os.Remove("session.token")
+						log.Infof("缓存已删除.")
 						os.Exit(0)
 					}
 				}
@@ -307,6 +310,7 @@ func main() {
 		time.Sleep(time.Second * time.Duration(conf.Account.ReLogin.Delay))
 		for {
 			if conf.Account.ReLogin.Disabled {
+				log.Warnf("未启用自动重连, 将退出.")
 				os.Exit(1)
 			}
 			if times > conf.Account.ReLogin.MaxTimes && conf.Account.ReLogin.MaxTimes != 0 {
@@ -318,6 +322,10 @@ func main() {
 				time.Sleep(time.Second * time.Duration(conf.Account.ReLogin.Interval))
 			} else {
 				time.Sleep(time.Second)
+			}
+			if cli.Online {
+				log.Infof("登录已完成")
+				break
 			}
 			log.Warnf("尝试重连...")
 			err := cli.TokenLogin(AccountToken)
@@ -638,7 +646,7 @@ func newClient() *client.QQClient {
 		log.Infof("检测到 address.txt 文件. 将覆盖目标IP.")
 		addr := global.ReadAddrFile("address.txt")
 		if len(addr) > 0 {
-			cli.SetCustomServer(addr)
+			c.SetCustomServer(addr)
 		}
 		log.Infof("读取到 %v 个自定义地址.", len(addr))
 	}

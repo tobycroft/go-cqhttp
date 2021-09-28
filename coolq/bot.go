@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/gob"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"hash/crc32"
 	"io"
@@ -19,7 +20,6 @@ import (
 	"github.com/Mrs4s/MiraiGo/client"
 	"github.com/Mrs4s/MiraiGo/message"
 	"github.com/Mrs4s/MiraiGo/utils"
-	jsoniter "github.com/json-iterator/go"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"github.com/syndtr/goleveldb/leveldb"
@@ -28,8 +28,6 @@ import (
 	"github.com/Mrs4s/go-cqhttp/global"
 	"github.com/Mrs4s/go-cqhttp/global/config"
 )
-
-var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 // CQBot CQBot结构体,存储Bot实例相关配置
 type CQBot struct {
@@ -41,15 +39,11 @@ type CQBot struct {
 	db               *leveldb.DB
 	friendReqCache   sync.Map
 	tempSessionCache sync.Map
-	oneWayMsgCache   sync.Map
 }
-
-// MSG 消息Map
-type MSG map[string]interface{}
 
 // Event 事件
 type Event struct {
-	RawMsg MSG
+	RawMsg global.MSG
 
 	once   sync.Once
 	buffer *bytes.Buffer
@@ -81,12 +75,27 @@ var ForceFragmented = false
 // SkipMimeScan 是否跳过Mime扫描
 var SkipMimeScan bool
 
-var lawfulImageTypes = []string{"image/png", "image/jpeg", "image/gif", "image/bmp"}
+// keep sync with /docs/file.md#MINE
+var lawfulImageTypes = [...]string{
+	"image/bmp",
+	"image/gif",
+	"image/jpeg",
+	"image/png",
+	"image/webp",
+}
 
-var lawfulAudioTypes = []string{
-	"audio/mpeg", "audio/flac", "audio/midi", "audio/ogg",
-	"audio/ape", "audio/amr", "audio/wav", "audio/aiff",
-	"audio/mp4", "audio/aac", "audio/x-m4a",
+var lawfulAudioTypes = [...]string{
+	"audio/aac",
+	"audio/aiff",
+	"audio/amr",
+	"audio/ape",
+	"audio/flac",
+	"audio/midi",
+	"audio/mp4",
+	"audio/mpeg",
+	"audio/ogg",
+	"audio/wav",
+	"audio/x-m4a",
 }
 
 // NewQQBot 初始化一个QQBot实例
@@ -126,6 +135,7 @@ func NewQQBot(cli *client.QQClient, conf *config.Config) *CQBot {
 	bot.Client.OnGroupMessageRecalled(bot.groupRecallEvent)
 	bot.Client.OnGroupNotify(bot.groupNotifyEvent)
 	bot.Client.OnFriendNotify(bot.friendNotifyEvent)
+	bot.Client.OnMemberSpecialTitleUpdated(bot.memberTitleUpdatedEvent)
 	bot.Client.OnFriendMessageRecalled(bot.friendRecallEvent)
 	bot.Client.OnReceivedOfflineFile(bot.offlineFileEvent)
 	bot.Client.OnJoinGroup(bot.joinGroupEvent)
@@ -152,7 +162,7 @@ func NewQQBot(cli *client.QQClient, conf *config.Config) *CQBot {
 		t := time.NewTicker(time.Second * time.Duration(i))
 		for {
 			<-t.C
-			bot.dispatchEventMessage(MSG{
+			bot.dispatchEventMessage(global.MSG{
 				"time":            time.Now().Unix(),
 				"self_id":         bot.Client.Uin,
 				"post_type":       "meta_event",
@@ -173,9 +183,9 @@ func (bot *CQBot) OnEventPush(f func(e *Event)) {
 }
 
 // GetMessage 获取给定消息id对应的消息
-func (bot *CQBot) GetMessage(mid int32) MSG {
+func (bot *CQBot) GetMessage(mid int32) global.MSG {
 	if bot.db != nil {
-		m := MSG{}
+		m := global.MSG{}
 		data, err := bot.db.Get(binary.ToBytes(mid), nil)
 		if err == nil {
 			err = gob.NewDecoder(bytes.NewReader(data)).Decode(&m)
@@ -211,35 +221,32 @@ func (bot *CQBot) UploadLocalImageAsGroup(groupCode int64, img *LocalImageElemen
 
 // UploadLocalVideo 上传本地短视频至群聊
 func (bot *CQBot) UploadLocalVideo(target int64, v *LocalVideoElement) (*message.ShortVideoElement, error) {
-	if v.File != "" {
-		video, err := os.Open(v.File)
-		if err != nil {
-			return nil, err
-		}
-		defer video.Close()
-		hash, _ := utils.ComputeMd5AndLength(io.MultiReader(video, v.thumb))
-		cacheFile := path.Join(global.CachePath, hex.EncodeToString(hash)+".cache")
-		_, _ = video.Seek(0, io.SeekStart)
-		_, _ = v.thumb.Seek(0, io.SeekStart)
-		return bot.Client.UploadGroupShortVideo(target, video, v.thumb, cacheFile)
+	video, err := os.Open(v.File)
+	if err != nil {
+		return nil, err
 	}
-	return &v.ShortVideoElement, nil
+	defer video.Close()
+	hash, _ := utils.ComputeMd5AndLength(io.MultiReader(video, v.thumb))
+	cacheFile := path.Join(global.CachePath, hex.EncodeToString(hash)+".cache")
+	_, _ = video.Seek(0, io.SeekStart)
+	_, _ = v.thumb.Seek(0, io.SeekStart)
+	return bot.Client.UploadGroupShortVideo(target, video, v.thumb, cacheFile)
 }
 
 // UploadLocalImageAsPrivate 上传本地图片至私聊
 func (bot *CQBot) UploadLocalImageAsPrivate(userID int64, img *LocalImageElement) (i *message.FriendImageElement, err error) {
-	if img.Stream != nil {
-		i, err = bot.Client.UploadPrivateImage(userID, img.Stream)
-	} else {
-		// need update.
-		f, e := os.Open(img.File)
-		if e != nil {
-			return nil, e
+	if img.File != "" {
+		f, err := os.Open(img.File)
+		if err != nil {
+			return nil, errors.Wrap(err, "open image error")
 		}
-		defer f.Close()
-		i, err = bot.Client.UploadPrivateImage(userID, f)
+		defer func() { _ = f.Close() }()
+		img.Stream = f
 	}
-
+	if lawful, mime := IsLawfulImage(img.Stream); !lawful {
+		return nil, errors.New("image type error: " + mime)
+	}
+	i, err = bot.Client.UploadPrivateImage(userID, img.Stream)
 	if i != nil {
 		i.Flash = img.Flash
 	}
@@ -303,7 +310,7 @@ func (bot *CQBot) SendPrivateMessage(target int64, groupID int64, m *message.Sen
 	for _, e := range m.Elements {
 		switch i := e.(type) {
 		case *LocalImageElement, *message.VoiceElement, *LocalVideoElement:
-			i, err := bot.uploadMedia(i, groupID, false)
+			i, err := bot.uploadMedia(i, target, false)
 			if err != nil {
 				log.Warnf("警告: 私聊 %d 消息%s上传失败: %v", target, e.Type().String(), err)
 				continue
@@ -313,7 +320,7 @@ func (bot *CQBot) SendPrivateMessage(target int64, groupID int64, m *message.Sen
 			bot.Client.SendFriendPoke(i.Target)
 			return 0
 		case *message.MusicShareElement:
-			bot.Client.SendFriendMusicShare(groupID, i)
+			bot.Client.SendFriendMusicShare(target, i)
 			return 0
 		}
 		newElem = append(newElem, e)
@@ -324,13 +331,31 @@ func (bot *CQBot) SendPrivateMessage(target int64, groupID int64, m *message.Sen
 	}
 	m.Elements = newElem
 	bot.checkMedia(newElem)
+
+	// 单向好友是否存在
+	unidirectionalFriendExists := func() bool {
+		list, err := bot.Client.GetUnidirectionalFriendList()
+		if err != nil {
+			return false
+		}
+		for _, f := range list {
+			if f.Uin == target {
+				return true
+			}
+		}
+		return false
+	}
+
+	session, ok := bot.tempSessionCache.Load(target)
 	var id int32 = -1
-	if bot.Client.FindFriend(target) != nil { // 双向好友
+
+	switch {
+	case bot.Client.FindFriend(target) != nil: // 双向好友
 		msg := bot.Client.SendPrivateMessage(target, m)
 		if msg != nil {
 			id = bot.InsertPrivateMessage(msg)
 		}
-	} else if session, ok := bot.tempSessionCache.Load(target); ok || groupID != 0 { // 临时会话
+	case ok || groupID != 0: // 临时会话
 		switch {
 		case groupID != 0 && bot.Client.FindGroup(groupID) == nil:
 			log.Errorf("错误: 找不到群(%v)", groupID)
@@ -355,12 +380,12 @@ func (bot *CQBot) SendPrivateMessage(target int64, groupID int64, m *message.Sen
 				id = bot.InsertTempMessage(target, msg)
 			}
 		}
-	} else if _, ok := bot.oneWayMsgCache.Load(target); ok { // 单向好友
+	case unidirectionalFriendExists(): // 单向好友
 		msg := bot.Client.SendPrivateMessage(target, m)
 		if msg != nil {
 			id = bot.InsertPrivateMessage(msg)
 		}
-	} else {
+	default:
 		nickname := "Unknown"
 		if summaryInfo, _ := bot.Client.GetSummaryInfo(target); summaryInfo != nil {
 			nickname = summaryInfo.Nickname
@@ -372,7 +397,7 @@ func (bot *CQBot) SendPrivateMessage(target int64, groupID int64, m *message.Sen
 
 // InsertGroupMessage 群聊消息入数据库
 func (bot *CQBot) InsertGroupMessage(m *message.GroupMessage) int32 {
-	val := MSG{
+	val := global.MSG{
 		"message-id":  m.Id,
 		"internal-id": m.InternalId,
 		"group":       m.GroupCode,
@@ -399,7 +424,7 @@ func (bot *CQBot) InsertGroupMessage(m *message.GroupMessage) int32 {
 
 // InsertPrivateMessage 私聊消息入数据库
 func (bot *CQBot) InsertPrivateMessage(m *message.PrivateMessage) int32 {
-	val := MSG{
+	val := global.MSG{
 		"message-id":  m.Id,
 		"internal-id": m.InternalId,
 		"target":      m.Target,
@@ -425,10 +450,10 @@ func (bot *CQBot) InsertPrivateMessage(m *message.PrivateMessage) int32 {
 
 // InsertTempMessage 临时消息入数据库
 func (bot *CQBot) InsertTempMessage(target int64, m *message.TempMessage) int32 {
-	val := MSG{
+	val := global.MSG{
 		"message-id": m.Id,
 		// FIXME(InsertTempMessage) InternalId missing
-		"group":      m.GroupCode,
+		"from-group": m.GroupCode,
 		"group-name": m.GroupName,
 		"target":     target,
 		"sender":     m.Sender,
@@ -463,7 +488,7 @@ func (bot *CQBot) Release() {
 	}
 }
 
-func (bot *CQBot) dispatchEventMessage(m MSG) {
+func (bot *CQBot) dispatchEventMessage(m global.MSG) {
 	bot.lock.RLock()
 	defer bot.lock.RUnlock()
 
@@ -491,9 +516,9 @@ func (bot *CQBot) dispatchEventMessage(m MSG) {
 	global.PutBuffer(event.buffer)
 }
 
-func (bot *CQBot) formatGroupMessage(m *message.GroupMessage) MSG {
+func (bot *CQBot) formatGroupMessage(m *message.GroupMessage) global.MSG {
 	cqm := ToStringMessage(m.Elements, m.GroupCode, true)
-	gm := MSG{
+	gm := global.MSG{
 		"anonymous":    nil,
 		"font":         0,
 		"group_id":     m.GroupCode,
@@ -508,7 +533,7 @@ func (bot *CQBot) formatGroupMessage(m *message.GroupMessage) MSG {
 		}(),
 		"raw_message": cqm,
 		"self_id":     bot.Client.Uin,
-		"sender": MSG{
+		"sender": global.MSG{
 			"age":     0,
 			"area":    "",
 			"level":   "",
@@ -516,16 +541,16 @@ func (bot *CQBot) formatGroupMessage(m *message.GroupMessage) MSG {
 			"user_id": m.Sender.Uin,
 		},
 		"sub_type": "normal",
-		"time":     time.Now().Unix(),
+		"time":     m.Time,
 		"user_id":  m.Sender.Uin,
 	}
 	if m.Sender.IsAnonymous() {
-		gm["anonymous"] = MSG{
+		gm["anonymous"] = global.MSG{
 			"flag": m.Sender.AnonymousInfo.AnonymousId + "|" + m.Sender.AnonymousInfo.AnonymousNick,
 			"id":   m.Sender.Uin,
 			"name": m.Sender.AnonymousInfo.AnonymousNick,
 		}
-		gm["sender"].(MSG)["nickname"] = "匿名消息"
+		gm["sender"].(global.MSG)["nickname"] = "匿名消息"
 		gm["sub_type"] = "anonymous"
 	} else {
 		group := bot.Client.FindGroup(m.GroupCode)
@@ -543,7 +568,7 @@ func (bot *CQBot) formatGroupMessage(m *message.GroupMessage) MSG {
 				return nil
 			}
 		}
-		ms := gm["sender"].(MSG)
+		ms := gm["sender"].(global.MSG)
 		switch mem.Permission {
 		case client.Owner:
 			ms["role"] = "owner"
@@ -604,6 +629,10 @@ func IsLawfulImage(r io.ReadSeeker) (bool, string) {
 		log.Debugf("扫描 Mime 时出现问题: %v", err)
 		return false, ""
 	}
-	mime := t.String()
-	return mimetype.EqualsAny(mime, lawfulImageTypes...), mime
+	for _, lt := range lawfulImageTypes {
+		if t.Is(lt) {
+			return true, t.String()
+		}
+	}
+	return false, t.String()
 }

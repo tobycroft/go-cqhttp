@@ -1,6 +1,8 @@
 package server
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -34,20 +36,22 @@ type lambdaResponse struct {
 
 type lambdaResponseWriter struct {
 	statusCode int
+	buf        bytes.Buffer
 	header     http.Header
+}
+
+func (l *lambdaResponseWriter) Write(p []byte) (n int, err error) {
+	return l.buf.Write(p)
 }
 
 func (l *lambdaResponseWriter) Header() http.Header {
 	return l.header
 }
 
-func (l *lambdaResponseWriter) Write(data []byte) (int, error) {
+func (l *lambdaResponseWriter) flush() error {
 	buffer := global.NewBuffer()
 	defer global.PutBuffer(buffer)
-	body := ""
-	if data != nil {
-		body = utils.B2S(data)
-	}
+	body := utils.B2S(l.buf.Bytes())
 	header := make(map[string]string)
 	for k, v := range l.header {
 		header[k] = v[0]
@@ -62,10 +66,9 @@ func (l *lambdaResponseWriter) Write(data []byte) (int, error) {
 	r, _ := http.NewRequest("POST", cli.responseURL, buffer)
 	do, err := cli.client.Do(r)
 	if err != nil {
-		return 0, err
+		return err
 	}
-	_ = do.Body.Close()
-	return len(data), nil
+	return do.Body.Close()
 }
 
 func (l *lambdaResponseWriter) WriteHeader(statusCode int) {
@@ -84,8 +87,7 @@ func RunLambdaClient(bot *coolq.CQBot, conf *config.LambdaServer) {
 	case "scf": // tencent serverless function
 		base := fmt.Sprintf("http://%s:%s/runtime/",
 			os.Getenv("SCF_RUNTIME_API"),
-			os.Getenv("SCF_RUNTIME_API_PORT"),
-		)
+			os.Getenv("SCF_RUNTIME_API_PORT"))
 		cli.nextURL = base + "invocation/next"
 		cli.responseURL = base + "invocation/response"
 		post, err := http.Post(base+"init/ready", "", nil)
@@ -114,19 +116,20 @@ func RunLambdaClient(bot *coolq.CQBot, conf *config.LambdaServer) {
 
 	for {
 		req := cli.next()
-		if req == nil {
-			writer := lambdaResponseWriter{statusCode: 200}
-			_, _ = writer.Write(nil)
-			continue
-		}
+		writer := lambdaResponseWriter{statusCode: 200, header: make(http.Header)}
 		func() {
 			defer func() {
 				if e := recover(); e != nil {
 					log.Warnf("Lambda 出现不可恢复错误: %v\n%s", e, debug.Stack())
 				}
 			}()
-			server.ServeHTTP(&lambdaResponseWriter{header: make(http.Header)}, req)
+			if req != nil {
+				server.ServeHTTP(&writer, req)
+			}
 		}()
+		if err := writer.flush(); err != nil {
+			log.Warnf("Lambda 发送响应失败: %v", err)
+		}
 	}
 }
 
@@ -154,8 +157,8 @@ func (c *lambdaClient) next() *http.Request {
 	if resp.StatusCode != http.StatusOK {
 		return nil
 	}
-	var req = new(http.Request)
-	var invoke = new(lambdaInvoke)
+	req := new(http.Request)
+	invoke := new(lambdaInvoke)
 	_ = json.NewDecoder(resp.Body).Decode(invoke)
 	if invoke.HTTPMethod == "" { // 不是 api 网关
 		return nil
