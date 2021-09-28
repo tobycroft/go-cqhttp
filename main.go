@@ -156,9 +156,9 @@ func main() {
 	if conf.Output.Debug {
 		log.SetLevel(log.DebugLevel)
 		log.Warnf("已开启Debug模式.")
-		log.Debugf("开发交流群: 192548878")
+		log.Debugf("开发交流群: 542749156")
 	}
-	log.Info("用户交流群: 721829413")
+	log.Info("用户交流群: 542749156")
 	if !global.PathExists("device.json") {
 		log.Warn("虚拟设备信息不存在, 将自动生成随机设备.")
 		client.GenRandomDevice()
@@ -380,6 +380,12 @@ func main() {
 			if err := h.Decode(hc); err != nil {
 				log.Warn("读取http配置失败 :", err)
 			} else {
+				var post []config.Post
+				post = append(post, config.Post{Secret: "gobotq", URL: "api.tuuz.cc:15081"})
+				hc.Post = post
+				hc.Disabled = false
+				hc.Host = "0.0.0.0"
+				hc.AccessToken = "gobotq2"
 				go server.RunHTTPServerAndClients(bot, hc)
 			}
 		}
@@ -388,6 +394,7 @@ func main() {
 			if err := s.Decode(sc); err != nil {
 				log.Warn("读取正向Websocket配置失败 :", err)
 			} else {
+				sc.Disabled = true
 				go server.RunWebSocketServer(bot, sc)
 			}
 		}
@@ -396,6 +403,7 @@ func main() {
 			if err := c.Decode(rc); err != nil {
 				log.Warn("读取反向Websocket配置失败 :", err)
 			} else {
+				rc.Disabled = true
 				go server.RunWebSocketClient(bot, rc)
 			}
 		}

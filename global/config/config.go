@@ -5,6 +5,7 @@ import (
 	"bufio"
 	_ "embed" // embed the default config file
 	"fmt"
+	"gopkg.in/yaml.v3"
 	"os"
 	"path"
 	"strconv"
@@ -14,7 +15,6 @@ import (
 	"github.com/Mrs4s/go-cqhttp/global"
 
 	log "github.com/sirupsen/logrus"
-	"gopkg.in/yaml.v3"
 )
 
 // defaultConfig 默认配置文件
@@ -91,12 +91,14 @@ type HTTPServer struct {
 		Enabled      bool `yaml:"enabled"`
 		MaxQueueSize int  `yaml:"max-queue-size"`
 	} `yaml:"long-polling"`
-	Post []struct {
-		URL    string `yaml:"url"`
-		Secret string `yaml:"secret"`
-	}
+	Post []Post
 
 	MiddleWares `yaml:"middlewares"`
+}
+
+type Post struct {
+	URL    string `yaml:"url"`
+	Secret string `yaml:"secret"`
 }
 
 // PprofServer pprof性能分析服务器相关配置

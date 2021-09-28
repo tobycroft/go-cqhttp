@@ -13,6 +13,7 @@ require (
 	github.com/gorilla/websocket v1.4.2
 	github.com/guonaihong/gout v0.2.4
 	github.com/kardianos/osext v0.0.0-20190222173326-2bc1f35cddc0
+	github.com/leodido/go-urn v1.2.1 // indirect
 	github.com/lestrrat-go/file-rotatelogs v2.4.0+incompatible
 	github.com/pkg/errors v0.9.1
 	github.com/segmentio/asm v1.0.0
@@ -21,6 +22,7 @@ require (
 	github.com/syndtr/goleveldb v1.0.0
 	github.com/tidwall/gjson v1.8.1
 	github.com/tuotoo/qrcode v0.0.0-20190222102259-ac9c44189bf2
+	github.com/ugorji/go v1.2.5 // indirect
 	github.com/wdvxdr1123/go-silk v0.0.0-20210316130616-d47b553def60
 	golang.org/x/crypto v0.0.0-20210817164053-32db794688a5
 	golang.org/x/term v0.0.0-20210615171337-6886f2dfbf5b
