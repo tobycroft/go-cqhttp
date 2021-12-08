@@ -13,7 +13,7 @@ import (
 var bot = CQBot{}
 
 func TestCQBot_ConvertStringMessage(t *testing.T) {
-	for _, v := range bot.ConvertStringMessage(`[CQ:face,id=115,text=111][CQ:face,id=217]] [CQ:text,text=123] [`, false) {
+	for _, v := range bot.ConvertStringMessage(`[CQ:face,id=115,text=111][CQ:face,id=217]] [CQ:text,text=123] [`, MessageSourcePrivate) {
 		fmt.Println(v)
 	}
 }
@@ -25,14 +25,14 @@ var (
 
 func BenchmarkCQBot_ConvertStringMessage(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		bot.ConvertStringMessage(bench, false)
+		bot.ConvertStringMessage(bench, MessageSourcePrivate)
 	}
 	b.SetBytes(int64(len(bench)))
 }
 
 func BenchmarkCQBot_ConvertObjectMessage(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		bot.ConvertObjectMessage(benchArray, false)
+		bot.ConvertObjectMessage(benchArray, MessageSourcePrivate)
 	}
 }
 
@@ -41,7 +41,7 @@ const bText = `123456789[]&987654321[]&987654321[]&987654321[]&987654321[]&98765
 func BenchmarkCQCodeEscapeText(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		ret := bText
-		ret = CQCodeEscapeText(ret)
+		CQCodeEscapeText(ret)
 	}
 }
 
@@ -50,7 +50,7 @@ func BenchmarkCQCodeEscapeTextBefore(b *testing.B) {
 		ret := bText
 		ret = strings.ReplaceAll(ret, "&", "&amp;")
 		ret = strings.ReplaceAll(ret, "[", "&#91;")
-		ret = strings.ReplaceAll(ret, "]", "&#93;")
+		strings.ReplaceAll(ret, "]", "&#93;")
 	}
 }
 
