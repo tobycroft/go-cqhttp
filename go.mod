@@ -22,7 +22,6 @@ require (
 	github.com/syndtr/goleveldb v1.0.0
 	github.com/tidwall/gjson v1.9.1
 	github.com/tuotoo/qrcode v0.0.0-20190222102259-ac9c44189bf2
-	github.com/ugorji/go v1.2.5 // indirect
 	github.com/wdvxdr1123/go-silk v0.0.0-20210316130616-d47b553def60
 	golang.org/x/crypto v0.0.0-20210921155107-089bfa567519
 	golang.org/x/term v0.0.0-20210927222741-03fcf44c2211
@@ -32,6 +31,8 @@ require (
 
 require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/go-playground/locales v0.14.0 // indirect
+	github.com/go-playground/universal-translator v0.18.0 // indirect
 	github.com/go-playground/validator/v10 v10.9.0 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/google/uuid v1.3.0 // indirect
@@ -45,8 +46,9 @@ require (
 	github.com/remyoudompheng/bigfft v0.0.0-20200410134404-eec4a21b6bb0 // indirect
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e // indirect
 	github.com/tidwall/match v1.0.3 // indirect
+	github.com/tidwall/pretty v1.2.0 // indirect
+	github.com/ugorji/go/codec v1.2.5 // indirect
 	github.com/willf/bitset v1.2.0 // indirect
-	golang.org/x/image v0.0.0-20210628002857-a66eb6448b8d // indirect
 	golang.org/x/net v0.0.0-20210928044308-7d9f5e0b762b // indirect
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c // indirect
 	golang.org/x/sys v0.0.0-20210927094055-39ccf1dd6fa6 // indirect
@@ -54,4 +56,6 @@ require (
 	google.golang.org/protobuf v1.27.1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	modernc.org/libc v1.11.15 // indirect
+	modernc.org/mathutil v1.4.1 // indirect
+	modernc.org/memory v1.0.5 // indirect
 )
