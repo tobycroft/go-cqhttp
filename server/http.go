@@ -282,18 +282,14 @@ func runHTTP(bot *coolq.CQBot, node yaml.Node) {
 		}
 	}()
 client:
-	for _, c := range conf.Post {
-		if c.URL != "" {
-			go HTTPClient{
-				bot:     bot,
-				secret:  config2.Secret,
-				addr:    config2.Remote_address,
-				apiPort: config2.Remote_port,
-				filter:  conf.Filter,
-				timeout: conf.Timeout,
-			}.Run()
-		}
-	}
+	go HTTPClient{
+		bot:     bot,
+		secret:  config2.Secret,
+		addr:    config2.Remote_address,
+		apiPort: config2.Remote_port,
+		filter:  conf.Filter,
+		timeout: conf.Timeout,
+	}.Run()
 }
 
 // Run 运行反向HTTP服务
