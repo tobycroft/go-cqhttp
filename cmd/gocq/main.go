@@ -119,6 +119,8 @@ func Main() {
 			}
 		}
 	}
+	base.FastStart = true
+	base.HeartbeatInterval = 0
 
 	if (base.Account.Uin == 0 || (base.Account.Password == "" && !base.Account.Encrypt)) && !global.PathExists("session.token") {
 		log.Warn("账号密码未配置, 将使用二维码登录.")
@@ -202,7 +204,6 @@ func Main() {
 	}
 	if !base.FastStart {
 		log.Info("Bot将在5秒后登录并开始信息处理, 按 Ctrl+C 取消.")
-		time.Sleep(time.Second * 5)
 	}
 	log.Info("开始尝试登录并同步消息...")
 	log.Infof("使用协议: %v", func() string {

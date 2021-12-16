@@ -48,7 +48,7 @@ var (
 	Reconnect         *config.Reconnect      // 重连配置
 	LogLevel          string                 // 日志等级
 	LogAging          = time.Hour * 24 * 365 // 日志时效
-	HeartbeatInterval = 0 * time.Second      // 心跳间隔
+	HeartbeatInterval = time.Second * 5      // 心跳间隔
 
 	Servers  []map[string]yaml.Node // 连接服务列表
 	Database map[string]yaml.Node   // 数据库列表
