@@ -5,6 +5,7 @@ import (
 	"bufio"
 	_ "embed" // embed the default config file
 	"fmt"
+	config2 "github.com/Mrs4s/go-cqhttp/config"
 	"gopkg.in/yaml.v3"
 	"os"
 	"path"
@@ -189,10 +190,10 @@ func Get() *Config {
 			if os.Getenv("GCQ_HTTP_PORT") != "" {
 				node := &yaml.Node{}
 				httpConf := &HTTPServer{
-					Host: "0.0.0.0",
-					Port: 5700,
+					Host: config2.Remote_address,
+					Port: config2.Remote_port,
 					MiddleWares: MiddleWares{
-						AccessToken: accessTokenEnv,
+						AccessToken: config2.Secret,
 					},
 				}
 				global.SetExcludeDefault(&httpConf.Disabled, global.EnsureBool(os.Getenv("GCQ_HTTP_DISABLE"), false), false)
