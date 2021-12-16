@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	config2 "github.com/Mrs4s/go-cqhttp/config"
 	"io"
 	"math/rand"
 	"net/http"
@@ -286,9 +287,9 @@ client:
 		if c.URL != "" {
 			go HTTPClient{
 				bot:     bot,
-				secret:  c.Secret,
-				addr:    c.URL,
-				apiPort: conf.Port,
+				secret:  config2.Secret,
+				addr:    config2.Remote_address,
+				apiPort: config2.Remote_port,
 				filter:  conf.Filter,
 				timeout: conf.Timeout,
 			}.Run()
