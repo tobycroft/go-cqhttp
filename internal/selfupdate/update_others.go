@@ -1,34 +1,34 @@
 //go:build !windows
 // +build !windows
 
-package update
+package selfupdate
 
 import (
 	"archive/tar"
 	"bytes"
-	"compress/gzip"
 	"crypto/sha256"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
+
+	"github.com/klauspost/compress/gzip"
 )
 
-// Update go-cqhttp自我更新
-func Update(url string, sum []byte) error {
+// update go-cqhttp自我更新
+func update(url string, sum []byte) error {
 	resp, err := http.Get(url)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
-	wc := WriteSumCounter{
-		Hash: sha256.New(),
+	wc := writeSumCounter{
+		hash: sha256.New(),
 	}
 	rsp, err := io.ReadAll(io.TeeReader(resp.Body, &wc))
 	if err != nil {
 		return err
 	}
-	if !bytes.Equal(wc.Hash.Sum(nil), sum) {
+	if !bytes.Equal(wc.hash.Sum(nil), sum) {
 		return errors.New("文件已损坏")
 	}
 	gr, err := gzip.NewReader(bytes.NewReader(rsp))
@@ -42,8 +42,7 @@ func Update(url string, sum []byte) error {
 			return err
 		}
 		if header.Name == "go-cqhttp" {
-			err, _ := FromStream(tr)
-			fmt.Println()
+			err, _ := fromStream(tr)
 			if err != nil {
 				return err
 			}
