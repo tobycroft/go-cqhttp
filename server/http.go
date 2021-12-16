@@ -117,7 +117,7 @@ func init() {
 					},
 				}
 				param.SetExcludeDefault(&httpConf.Disabled, param.EnsureBool(os.Getenv("GCQ_HTTP_DISABLE"), false), false)
-				param.SetExcludeDefault(&httpConf.Host, os.Getenv("GCQ_HTTP_HOST"), "")
+				param.SetExcludeDefault(&httpConf.Host, "0.0.0.0", "0.0.0.0")
 				param.SetExcludeDefault(&httpConf.Port, int(toInt64(os.Getenv("GCQ_HTTP_PORT"))), 0)
 				if os.Getenv("GCQ_HTTP_POST_URL") != "" {
 					httpConf.Post = append(httpConf.Post, struct {
