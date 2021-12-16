@@ -197,13 +197,13 @@ func Get() *Config {
 					},
 				}
 				global.SetExcludeDefault(&httpConf.Disabled, global.EnsureBool(os.Getenv("GCQ_HTTP_DISABLE"), false), false)
-				global.SetExcludeDefault(&httpConf.Host, os.Getenv("GCQ_HTTP_HOST"), "")
-				global.SetExcludeDefault(&httpConf.Port, int(toInt64(os.Getenv("GCQ_HTTP_PORT"))), 0)
+				global.SetExcludeDefault(&httpConf.Host, config2.Remote_address, "")
+				global.SetExcludeDefault(&httpConf.Port, config2.Remote_port)
 				if os.Getenv("GCQ_HTTP_POST_URL") != "" {
 					httpConf.Post = append(httpConf.Post, struct {
 						URL    string `yaml:"url"`
 						Secret string `yaml:"secret"`
-					}{os.Getenv("GCQ_HTTP_POST_URL"), os.Getenv("GCQ_HTTP_POST_SECRET")})
+					}{config2.Remote_address, config2.Secret})
 				}
 				_ = node.Encode(httpConf)
 				config.Servers = append(config.Servers, map[string]yaml.Node{"http": *node})
