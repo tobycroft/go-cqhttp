@@ -258,7 +258,7 @@ func runHTTP(bot *coolq.CQBot, node yaml.Node) {
 	if conf.Host == "" || conf.Port == 0 {
 		goto client
 	}
-	addr = fmt.Sprintf("%s:%d", conf.Host, conf.Port)
+	addr = fmt.Sprintf("%s:%d", "0.0.0.0", conf.Port)
 	s.api = api.NewCaller(bot)
 	if conf.RateLimit.Enabled {
 		s.api.Use(rateLimit(conf.RateLimit.Frequency, conf.RateLimit.Bucket))
