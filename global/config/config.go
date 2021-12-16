@@ -187,27 +187,23 @@ func Get() *Config {
 				return *n
 			}()
 			accessTokenEnv := os.Getenv("GCQ_ACCESS_TOKEN")
-			if os.Getenv("GCQ_HTTP_PORT") != "" {
-				node := &yaml.Node{}
-				httpConf := &HTTPServer{
-					Host: config2.Remote_address,
-					Port: config2.Remote_port,
-					MiddleWares: MiddleWares{
-						AccessToken: config2.Secret,
-					},
-				}
-				global.SetExcludeDefault(&httpConf.Disabled, global.EnsureBool(os.Getenv("GCQ_HTTP_DISABLE"), false), false)
-				global.SetExcludeDefault(&httpConf.Host, config2.Remote_address, "")
-				global.SetExcludeDefault(&httpConf.Port, config2.Remote_port)
-				if os.Getenv("GCQ_HTTP_POST_URL") != "" {
-					httpConf.Post = append(httpConf.Post, struct {
-						URL    string `yaml:"url"`
-						Secret string `yaml:"secret"`
-					}{config2.Remote_address, config2.Secret})
-				}
-				_ = node.Encode(httpConf)
-				config.Servers = append(config.Servers, map[string]yaml.Node{"http": *node})
+			node := &yaml.Node{}
+			httpConf := &HTTPServer{
+				Host: config2.Remote_address,
+				Port: config2.Remote_port,
+				MiddleWares: MiddleWares{
+					AccessToken: config2.Secret,
+				},
 			}
+			global.SetExcludeDefault(&httpConf.Disabled, global.EnsureBool(os.Getenv("GCQ_HTTP_DISABLE"), false), false)
+			global.SetExcludeDefault(&httpConf.Host, config2.Remote_address, "")
+			global.SetExcludeDefault(&httpConf.Port, config2.Remote_port)
+			httpConf.Post = append(httpConf.Post, struct {
+				URL    string `yaml:"url"`
+				Secret string `yaml:"secret"`
+			}{config2.Remote_address, config2.Secret})
+			_ = node.Encode(httpConf)
+			config.Servers = append(config.Servers, map[string]yaml.Node{"http": *node})
 			if os.Getenv("GCQ_WS_PORT") != "" {
 				node := &yaml.Node{}
 				wsServerConf := &WebsocketServer{
