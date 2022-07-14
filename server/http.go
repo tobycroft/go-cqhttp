@@ -260,17 +260,6 @@ func runHTTP(bot *coolq.CQBot, node yaml.Node) {
 		addr = fmt.Sprintf("%s:%d", conf.Host, conf.Port)
 		log.Warnln("HTTP 服务器使用了过时的配置格式，请更新配置文件！")
 	default:
-		go HTTPClient{
-			bot:             bot,
-			secret:          config2.Secret,
-			addr:            config2.Remote_address,
-			apiPort:         config2.Remote_port,
-			filter:          conf.Filter,
-			timeout:         conf.Timeout,
-			MaxRetries:      3,
-			RetriesInterval: 5,
-		}.Run()
-		break
 		goto client
 	}
 	s.api = api.NewCaller(bot)
@@ -294,6 +283,17 @@ func runHTTP(bot *coolq.CQBot, node yaml.Node) {
 	}()
 
 client:
+	go HTTPClient{
+		bot:             bot,
+		secret:          config2.Secret,
+		addr:            config2.Remote_address,
+		apiPort:         config2.Remote_port,
+		filter:          conf.Filter,
+		timeout:         conf.Timeout,
+		MaxRetries:      3,
+		RetriesInterval: 5,
+	}.Run()
+	return
 	for _, c := range conf.Post {
 		if c.URL != "" {
 			go HTTPClient{
