@@ -79,13 +79,6 @@ default-middlewares: &default
     frequency: 1  # 令牌回复频率, 单位秒
     bucket: 1     # 令牌桶大小
 
-database: # 数据库相关设置
-  leveldb:
-    # 是否启用内置leveldb数据库
-    # 启用将会增加10-20MB的内存占用和一定的磁盘空间
-    # 关闭将无法使用 撤回 回复 get_msg 等上下文相关功能
-    enable: true
-
 # 连接服务列表
 servers:
   # HTTP 通信设置
@@ -166,6 +159,16 @@ database: # 数据库相关设置
 > 注4：关闭心跳服务可能引起断线，请谨慎关闭
 
 > 注5：关于MIME扫描， 详见[MIME](file.md#MIME)
+
+### 环境变量
+
+go-cqhttp 配置文件可以使用占位符来读取**环境变量**的值。
+
+```yaml
+account: # 账号相关
+  uin: ${CQ_UIN} # 读取环境变量 CQ_UIN
+  password: ${CQ_PWD:123456} # 当 CQ_PWD 为空时使用默认值 123456
+```
 
 ## 在线状态
 

@@ -3,15 +3,19 @@ package gocq
 import (
 	"bufio"
 	"bytes"
+	"fmt"
+	"image"
+	"image/png"
 	"os"
 	"strings"
 	"time"
 
-	qrcodeTerminal "github.com/Baozisoftware/qrcode-terminal-go"
 	"github.com/Mrs4s/MiraiGo/client"
-	"github.com/gocq/qrcode"
+	"github.com/Mrs4s/MiraiGo/utils"
+	"github.com/mattn/go-colorable"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
+	"github.com/tidwall/gjson"
 
 	"github.com/Mrs4s/go-cqhttp/global"
 )
@@ -53,12 +57,36 @@ func commonLogin() error {
 	return loginResponseProcessor(res)
 }
 
-func qrcodeLogin() error {
-	rsp, err := cli.FetchQRCode()
+func printQRCode(imgData []byte) {
+	const (
+		black = "\033[48;5;0m  \033[0m"
+		white = "\033[48;5;7m  \033[0m"
+	)
+	img, err := png.Decode(bytes.NewReader(imgData))
 	if err != nil {
-		return err
+		log.Panic(err)
 	}
-	fi, err := qrcode.Decode(bytes.NewReader(rsp.ImageData))
+	data := img.(*image.Gray).Pix
+	bound := img.Bounds().Max.X
+	buf := make([]byte, 0, (bound*4+1)*(bound))
+	i := 0
+	for y := 0; y < bound; y++ {
+		i = y * bound
+		for x := 0; x < bound; x++ {
+			if data[i] != 255 {
+				buf = append(buf, white...)
+			} else {
+				buf = append(buf, black...)
+			}
+			i++
+		}
+		buf = append(buf, '\n')
+	}
+	_, _ = colorable.NewColorableStdout().Write(buf)
+}
+
+func qrcodeLogin() error {
+	rsp, err := cli.FetchQRCodeCustomSize(1, 2, 1)
 	if err != nil {
 		return err
 	}
@@ -70,7 +98,7 @@ func qrcodeLogin() error {
 		log.Infof("请使用手机QQ扫描二维码 (qrcode.png) : ")
 	}
 	time.Sleep(time.Second)
-	qrcodeTerminal.New2(qrcodeTerminal.ConsoleColors.BrightBlack, qrcodeTerminal.ConsoleColors.BrightWhite, qrcodeTerminal.QRCodeRecoveryLevels.Low).Get(fi.Content).Print()
+	printQRCode(rsp.ImageData)
 	s, err := cli.QueryQRCodeStatus(rsp.Sig)
 	if err != nil {
 		return err
@@ -117,7 +145,19 @@ func loginResponseProcessor(res *client.LoginResponse) error {
 		var text string
 		switch res.Error {
 		case client.SliderNeededError:
-			log.Warnf("登录需要滑条验证码, 请使用手机QQ扫描二维码以继续登录.")
+			log.Warnf("登录需要滑条验证码, 请选择验证方式: ")
+			log.Warnf("1. 使用浏览器抓取滑条并登录")
+			log.Warnf("2. 使用手机QQ扫码验证 (需要手Q和gocq在同一网络下).")
+			log.Warn("请输入(1 - 2) (将在10秒后自动选择1)：")
+			text = readLineTimeout(time.Second*10, "1")
+			if strings.Contains(text, "1") {
+				ticket := sliderCaptchaProcessor(res.VerifyUrl)
+				if ticket == "" {
+					os.Exit(0)
+				}
+				res, err = cli.SubmitTicket(ticket)
+				continue
+			}
 			cli.Disconnect()
 			cli.Release()
 			cli = client.NewClientEmpty()
@@ -167,8 +207,7 @@ func loginResponseProcessor(res *client.LoginResponse) error {
 			msg := res.ErrorMessage
 			if strings.Contains(msg, "版本") {
 				msg = "密码错误或账号被冻结"
-			}
-			if strings.Contains(msg, "冻结") {
+			} else if strings.Contains(msg, "冻结") {
 				log.Fatalf("账号被冻结")
 			}
 			log.Warnf("登录失败: %v", msg)
@@ -177,4 +216,24 @@ func loginResponseProcessor(res *client.LoginResponse) error {
 			os.Exit(0)
 		}
 	}
+}
+
+func sliderCaptchaProcessor(u string) string {
+	id := utils.RandomString(8)
+	log.Warnf("请前往该地址验证 -> %v", strings.ReplaceAll(u, "https://ssl.captcha.qq.com/template/wireless_mqq_captcha.html?", fmt.Sprintf("https://captcha.go-cqhttp.org/captcha?id=%v&", id)))
+	start := time.Now()
+	for time.Since(start).Minutes() < 2 {
+		time.Sleep(time.Second)
+		data, err := global.GetBytes("https://captcha.go-cqhttp.org/captcha/ticket?id=" + id)
+		if err != nil {
+			log.Warnf("获取 Ticket 时出现错误: %v", err)
+			return ""
+		}
+		g := gjson.ParseBytes(data)
+		if g.Get("ticket").Exists() {
+			return g.Get("ticket").String()
+		}
+	}
+	log.Warnf("验证超时")
+	return ""
 }

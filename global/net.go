@@ -71,9 +71,6 @@ func DownloadFile(url, path string, limit int64, headers map[string]string) erro
 		req.Header.Set(k, v)
 	}
 
-	if _, ok := headers["User-Agent"]; !ok {
-		req.Header["User-Agent"] = []string{UserAgent}
-	}
 	resp, err := client.Do(req)
 	if err != nil {
 		return err
@@ -82,7 +79,7 @@ func DownloadFile(url, path string, limit int64, headers map[string]string) erro
 	if limit > 0 && resp.ContentLength > limit {
 		return ErrOverSize
 	}
-	_, err = io.Copy(file, resp.Body)
+	_, err = file.ReadFrom(resp.Body)
 	if err != nil {
 		return err
 	}
@@ -110,7 +107,7 @@ func DownloadFileMultiThreading(url, path string, limit int64, threadCount int, 
 				return err
 			}
 			defer file.Close()
-			if _, err = io.Copy(file, s); err != nil {
+			if _, err = file.ReadFrom(s); err != nil {
 				return err
 			}
 			return errUnsupportedMultiThreading

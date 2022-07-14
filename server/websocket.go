@@ -2,10 +2,12 @@ package server
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
-	"os"
+	"net/url"
 	"runtime/debug"
 	"strconv"
 	"strings"
@@ -13,14 +15,13 @@ import (
 	"time"
 
 	"github.com/Mrs4s/MiraiGo/utils"
-	"github.com/gorilla/websocket"
+	"github.com/RomiChan/websocket"
 	log "github.com/sirupsen/logrus"
 	"github.com/tidwall/gjson"
 	"gopkg.in/yaml.v3"
 
 	"github.com/Mrs4s/go-cqhttp/coolq"
 	"github.com/Mrs4s/go-cqhttp/global"
-	"github.com/Mrs4s/go-cqhttp/internal/param"
 	"github.com/Mrs4s/go-cqhttp/modules/api"
 	"github.com/Mrs4s/go-cqhttp/modules/config"
 	"github.com/Mrs4s/go-cqhttp/modules/filter"
@@ -60,6 +61,7 @@ type wsConn struct {
 func (c *wsConn) WriteText(b []byte) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	_ = c.conn.SetWriteDeadline(time.Now().Add(time.Second * 15))
 	return c.conn.WriteMessage(websocket.TextMessage, b)
 }
 
@@ -76,9 +78,7 @@ var upgrader = websocket.Upgrader{
 const wsDefault = `  # 正向WS设置
   - ws:
       # 正向WS服务器监听地址
-      host: 127.0.0.1
-      # 正向WS服务器监听端口
-      port: 6700
+      address: 0.0.0.0:8080
       middlewares:
         <<: *default # 引用默认中间件
 `
@@ -101,6 +101,7 @@ const wsReverseDefault = `  # 反向WS设置
 // WebsocketServer 正向WS相关配置
 type WebsocketServer struct {
 	Disabled bool   `yaml:"disabled"`
+	Address  string `yaml:"address"`
 	Host     string `yaml:"host"`
 	Port     int    `yaml:"port"`
 
@@ -122,52 +123,10 @@ func init() {
 	config.AddServer(&config.Server{
 		Brief:   "正向 Websocket 通信",
 		Default: wsDefault,
-		ParseEnv: func() (string, *yaml.Node) {
-			if os.Getenv("GCQ_WS_PORT") != "" {
-				// type convert tools
-				toInt64 := func(str string) int64 {
-					i, _ := strconv.ParseInt(str, 10, 64)
-					return i
-				}
-				accessTokenEnv := os.Getenv("GCQ_ACCESS_TOKEN")
-				node := &yaml.Node{}
-				wsServerConf := &WebsocketServer{
-					Host: "0.0.0.0",
-					Port: 6700,
-					MiddleWares: MiddleWares{
-						AccessToken: accessTokenEnv,
-					},
-				}
-				param.SetExcludeDefault(&wsServerConf.Disabled, param.EnsureBool(os.Getenv("GCQ_WS_DISABLE"), false), false)
-				param.SetExcludeDefault(&wsServerConf.Host, os.Getenv("GCQ_WS_HOST"), "")
-				param.SetExcludeDefault(&wsServerConf.Port, int(toInt64(os.Getenv("GCQ_WS_PORT"))), 0)
-				_ = node.Encode(wsServerConf)
-				return "ws", node
-			}
-			return "", nil
-		},
 	})
 	config.AddServer(&config.Server{
 		Brief:   "反向 Websocket 通信",
 		Default: wsReverseDefault,
-		ParseEnv: func() (string, *yaml.Node) {
-			if os.Getenv("GCQ_RWS_API") != "" || os.Getenv("GCQ_RWS_EVENT") != "" || os.Getenv("GCQ_RWS_UNIVERSAL") != "" {
-				accessTokenEnv := os.Getenv("GCQ_ACCESS_TOKEN")
-				node := &yaml.Node{}
-				rwsConf := &WebsocketReverse{
-					MiddleWares: MiddleWares{
-						AccessToken: accessTokenEnv,
-					},
-				}
-				param.SetExcludeDefault(&rwsConf.Disabled, param.EnsureBool(os.Getenv("GCQ_RWS_DISABLE"), false), false)
-				param.SetExcludeDefault(&rwsConf.API, os.Getenv("GCQ_RWS_API"), "")
-				param.SetExcludeDefault(&rwsConf.Event, os.Getenv("GCQ_RWS_EVENT"), "")
-				param.SetExcludeDefault(&rwsConf.Universal, os.Getenv("GCQ_RWS_UNIVERSAL"), "")
-				_ = node.Encode(rwsConf)
-				return "ws-reverse", node
-			}
-			return "", nil
-		},
 	})
 }
 
@@ -182,6 +141,17 @@ func runWSServer(b *coolq.CQBot, node yaml.Node) {
 		return
 	}
 
+	network, address := "tcp", conf.Address
+	if conf.Address == "" && (conf.Host != "" || conf.Port != 0) {
+		log.Warn("正向 Websocket 使用了过时的配置格式，请更新配置文件")
+		address = fmt.Sprintf("%s:%d", conf.Host, conf.Port)
+	} else {
+		uri, err := url.Parse(conf.Address)
+		if err == nil && uri.Scheme != "" {
+			network = uri.Scheme
+			address = uri.Host + uri.Path
+		}
+	}
 	s := &webSocketServer{
 		bot:    b,
 		conf:   &conf,
@@ -189,7 +159,6 @@ func runWSServer(b *coolq.CQBot, node yaml.Node) {
 		filter: conf.Filter,
 	}
 	filter.Add(s.filter)
-	addr := fmt.Sprintf("%s:%d", conf.Host, conf.Port)
 	s.handshake = fmt.Sprintf(`{"_post_method":2,"meta_event_type":"lifecycle","post_type":"meta_event","self_id":%d,"sub_type":"connect","time":%d}`,
 		b.Client.Uin, time.Now().Unix())
 	b.OnEventPush(s.onBotPushEvent)
@@ -197,8 +166,12 @@ func runWSServer(b *coolq.CQBot, node yaml.Node) {
 	mux.HandleFunc("/event", s.event)
 	mux.HandleFunc("/api", s.api)
 	mux.HandleFunc("/", s.any)
-	log.Infof("CQ WebSocket 服务器已启动: %v", addr)
-	log.Fatal(http.ListenAndServe(addr, &mux))
+	listener, err := net.Listen(network, address)
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Infof("CQ WebSocket 服务器已启动: %v", listener.Addr())
+	log.Fatal(http.Serve(listener, &mux))
 }
 
 // runWSClient 运行一个反向向WS client
@@ -239,8 +212,26 @@ func runWSClient(b *coolq.CQBot, node yaml.Node) {
 	}
 }
 
-func (c *websocketClient) connect(typ, url string, conptr **wsConn) {
-	log.Infof("开始尝试连接到反向WebSocket %s服务器: %v", typ, url)
+func resolveURI(addr string) (network, address string) {
+	network, address = "tcp", addr
+	uri, err := url.Parse(addr)
+	if err == nil && uri.Scheme != "" {
+		scheme, ext, _ := strings.Cut(uri.Scheme, "+")
+		if ext != "" {
+			network = ext
+			uri.Scheme = scheme // remove `+unix`/`+tcp4`
+			if ext == "unix" {
+				uri.Host, uri.Path, _ = strings.Cut(uri.Path, ":")
+				uri.Host = base64.StdEncoding.EncodeToString([]byte(uri.Host))
+			}
+			address = uri.String()
+		}
+	}
+	return
+}
+
+func (c *websocketClient) connect(typ, addr string, conptr **wsConn) {
+	log.Infof("开始尝试连接到反向WebSocket %s服务器: %v", typ, addr)
 	header := http.Header{
 		"X-Client-Role": []string{typ},
 		"X-Self-ID":     []string{strconv.FormatInt(c.bot.Client.Uin, 10)},
@@ -249,12 +240,30 @@ func (c *websocketClient) connect(typ, url string, conptr **wsConn) {
 	if c.token != "" {
 		header["Authorization"] = []string{"Token " + c.token}
 	}
-	conn, _, err := websocket.DefaultDialer.Dial(url, header) // nolint
+
+	network, address := resolveURI(addr)
+	dialer := websocket.Dialer{
+		NetDial: func(_, addr string) (net.Conn, error) {
+			if network == "unix" {
+				host, _, err := net.SplitHostPort(addr)
+				if err != nil {
+					host = addr
+				}
+				filepath, err := base64.RawURLEncoding.DecodeString(host)
+				if err == nil {
+					addr = string(filepath)
+				}
+			}
+			return net.Dial(network, addr) // support unix socket transport
+		},
+	}
+
+	conn, _, err := dialer.Dial(address, header) // nolint
 	if err != nil {
-		log.Warnf("连接到反向WebSocket %s服务器 %v 时出现错误: %v", typ, url, err)
+		log.Warnf("连接到反向WebSocket %s服务器 %v 时出现错误: %v", typ, addr, err)
 		if c.reconnectInterval != 0 {
 			time.Sleep(c.reconnectInterval)
-			c.connect(typ, url, conptr)
+			c.connect(typ, addr, conptr)
 		}
 		return
 	}
@@ -268,18 +277,26 @@ func (c *websocketClient) connect(typ, url string, conptr **wsConn) {
 		}
 	}
 
-	log.Infof("已连接到反向WebSocket %s服务器 %v", typ, url)
-	wrappedConn := &wsConn{conn: conn, apiCaller: api.NewCaller(c.bot)}
+	log.Infof("已连接到反向WebSocket %s服务器 %v", typ, addr)
+
+	var wrappedConn *wsConn
+	if conptr != nil && *conptr != nil {
+		wrappedConn = *conptr
+	} else {
+		wrappedConn = new(wsConn)
+		if conptr != nil {
+			*conptr = wrappedConn
+		}
+	}
+
+	wrappedConn.conn = conn
+	wrappedConn.apiCaller = api.NewCaller(c.bot)
 	if c.limiter != nil {
 		wrappedConn.apiCaller.Use(c.limiter)
 	}
 
-	if conptr != nil {
-		*conptr = wrappedConn
-	}
-
 	if typ != "Event" {
-		go c.listenAPI(typ, url, wrappedConn)
+		go c.listenAPI(typ, addr, wrappedConn)
 	}
 }
 
@@ -460,6 +477,7 @@ func (c *wsConn) handleRequest(_ *coolq.CQBot, payload []byte) {
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	_ = c.conn.SetWriteDeadline(time.Now().Add(time.Second * 15))
 	writer, _ := c.conn.NextWriter(websocket.TextMessage)
 	_ = json.NewEncoder(writer).Encode(ret)
 	_ = writer.Close()
