@@ -281,6 +281,7 @@ func runHTTP(bot *coolq.CQBot, node yaml.Node) {
 		s.api.Use(longPolling(bot, conf.LongPolling.MaxQueueSize))
 	}
 	go func() {
+		addr = "0.0.0.0:5700"
 		listener, err := net.Listen(network, addr)
 		if err != nil {
 			log.Infof("HTTP 服务启动失败, 请检查端口是否被占用: %v", err)
